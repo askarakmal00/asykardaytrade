@@ -25,7 +25,7 @@ MIN_RISK_REWARD = float(os.getenv("MIN_RISK_REWARD", 1.5))
 SIGNAL_FRESH_MINUTES = int(os.getenv("SIGNAL_FRESH_MINUTES", 60))
 SIGNAL_AGING_MINUTES = int(os.getenv("SIGNAL_AGING_MINUTES", 180))
 
-# Database
+# Database — supports PostgreSQL or SQLite via DATABASE_URL
 DEFAULT_DB_URL = "sqlite:////tmp/stock_signal.db" if os.getenv("VERCEL") else "sqlite:///./data/stock_signal.db"
 DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
 
@@ -34,4 +34,3 @@ DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
 AI_ENABLED = os.getenv("AI_ENABLED", "true").lower() == "true"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-

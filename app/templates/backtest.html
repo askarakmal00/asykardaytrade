@@ -1,312 +1,176 @@
 {% extends "base.html" %}
 {% set active_page = "backtest" %}
 
+{% block title %}Backtest Strategi — IDX Signal{% endblock %}
+
 {% block content %}
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+<!-- Page Header -->
+<div class="flex items-center justify-between" style="margin-bottom: 24px;">
     <div>
-        <h3 class="fw-bold mb-1 text-white"><i class="bi bi-clock-history text-primary me-2"></i>Strategy Backtesting</h3>
-        <p class="text-muted small mb-0">Evaluate Pullback &amp; Breakout setup edge across historical candles with strictly zero look-ahead bias.</p>
+        <h1 style="font-size: 22px; margin-bottom: 6px;">Uji Historis Strategi (Backtest)</h1>
+        <p style="color: var(--text-secondary); font-size: 13px;">
+            Simulasi eksekusi setup Pullback dan Breakout pada data historis tanpa bias masa depan.
+        </p>
     </div>
 </div>
 
-<!-- Backtest Configuration Card -->
-<div class="card p-4 mb-4">
-    <form id="backtestForm" action="/backtest" method="GET" class="row g-3 align-items-end">
-        <div class="col-md-3">
-            <label class="form-label small text-muted">Target Saham / Universe</label>
-            <select name="symbol" id="symbolSelect" class="form-select bg-dark border-secondary text-white">
-                <option value="TOP_READY" {% if selected_symbol == 'TOP_READY' %}selected{% endif %}>⚡ Top Ready to Action Stocks</option>
-                <option value="ALL" {% if selected_symbol == 'ALL' %}selected{% endif %}>🌐 All Stocks (625 Universe)</option>
-                <optgroup label="── Ready to Action Saham ──">
-                    {% for sym in ready_symbols %}
-                        <option value="{{ sym }}" {% if selected_symbol == sym %}selected{% endif %}>★ {{ sym }}</option>
-                    {% endfor %}
-                </optgroup>
-                <optgroup label="── Seluruh Saham IDX ──">
-                    {% for sym in all_symbols %}
-                        <option value="{{ sym.symbol }}" {% if selected_symbol == sym.symbol %}selected{% endif %}>{{ sym.symbol }} - {{ sym.name }}</option>
-                    {% endfor %}
-                </optgroup>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label small text-muted">Setup Strategy</label>
-            <select name="setup" id="setupSelect" class="form-select bg-dark border-secondary text-white">
-                <option value="ALL" {% if selected_setup == 'ALL' %}selected{% endif %}>All Setups (Pullback + Breakout)</option>
-                <option value="PULLBACK" {% if selected_setup == 'PULLBACK' %}selected{% endif %}>Pullback Setup Only</option>
-                <option value="BREAKOUT" {% if selected_setup == 'BREAKOUT' %}selected{% endif %}>Breakout Setup Only</option>
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small text-muted">Min Signal Score</label>
-            <input type="number" name="min_score" id="minScoreInput" class="form-control bg-dark border-secondary text-white" value="{{ min_score|default(70) }}" min="50" max="95">
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small text-muted">Max Hold (Days)</label>
-            <input type="number" name="max_hold" id="maxHoldInput" class="form-control bg-dark border-secondary text-white" value="{{ max_hold|default(5) }}" min="1" max="20">
-        </div>
-        <div class="col-md-2">
-            <button type="submit" id="btnSubmitBt" class="btn btn-glow-primary w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2">
-                <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
-                <i id="btnIcon" class="bi bi-play-circle"></i>
-                <span id="btnText">RUN BACKTEST</span>
-            </button>
+<!-- Backtest Configuration Form -->
+<div class="card" style="margin-bottom: 24px;">
+    <form id="backtestForm" action="/backtest" method="GET">
+        <div class="grid-4" style="gap: 16px; align-items: end;">
+            <div>
+                <label>Target Saham</label>
+                <select name="symbol" id="symbolSelect">
+                    <option value="TOP_READY" {% if selected_symbol == 'TOP_READY' %}selected{% endif %}>Sinyal Siap Beli Teratas</option>
+                    <option value="ALL" {% if selected_symbol == 'ALL' %}selected{% endif %}>Seluruh Saham Universe</option>
+                    {% if ready_symbols %}
+                    <optgroup label="── Saham Siap Beli ──">
+                        {% for sym in ready_symbols %}
+                            <option value="{{ sym }}" {% if selected_symbol == sym %}selected{% endif %}>{{ sym }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endif %}
+                    <optgroup label="── Seluruh Saham IDX ──">
+                        {% for sym in all_symbols %}
+                            <option value="{{ sym.symbol }}" {% if selected_symbol == sym.symbol %}selected{% endif %}>{{ sym.symbol }} &ndash; {{ sym.name }}</option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+            <div>
+                <label>Strategi Setup</label>
+                <select name="setup" id="setupSelect">
+                    <option value="ALL" {% if selected_setup == 'ALL' %}selected{% endif %}>Semua Setup (Pullback + Breakout)</option>
+                    <option value="PULLBACK" {% if selected_setup == 'PULLBACK' %}selected{% endif %}>Hanya Pullback</option>
+                    <option value="BREAKOUT" {% if selected_setup == 'BREAKOUT' %}selected{% endif %}>Hanya Breakout</option>
+                </select>
+            </div>
+            <div>
+                <label>Skor Minimal</label>
+                <input type="number" name="min_score" value="{{ min_score|default(70) }}" min="50" max="95">
+            </div>
+            <div class="flex items-center gap-2">
+                <div style="flex: 1;">
+                    <label>Maks Hold (Hari)</label>
+                    <input type="number" name="max_hold" value="{{ max_hold|default(5) }}" min="1" max="20">
+                </div>
+                <button type="submit" class="btn btn-amber" style="height: 38px; margin-top: auto;">
+                    <i data-lucide="play"></i>
+                    <span>Jalankan</span>
+                </button>
+            </div>
         </div>
     </form>
 </div>
 
-<!-- Active Backtest Target Banner -->
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div class="d-flex align-items-center gap-2">
-        <span class="text-secondary small text-uppercase fw-semibold">Target Analisis:</span>
-        {% if selected_symbol == 'TOP_READY' %}
-            <span class="badge bg-success fs-6"><i class="bi bi-lightning-charge-fill me-1"></i>Top Ready to Action Stocks ({{ ready_symbols|length }} Saham)</span>
-        {% elif selected_symbol == 'ALL' %}
-            <span class="badge bg-secondary fs-6"><i class="bi bi-globe me-1"></i>All Active Stocks (625 Universe)</span>
-        {% else %}
-            <span class="badge bg-primary fs-6 mono"><i class="bi bi-tag-fill me-1"></i>{{ selected_symbol }}</span>
-            <a href="/stock/{{ selected_symbol }}" class="btn btn-sm btn-outline-secondary py-0 px-2 ms-2">Lihat Detail Saham &rarr;</a>
-        {% endif %}
+<!-- Active Target Info -->
+<div class="flex items-center justify-between" style="margin-bottom: 20px; font-size: 13px; color: var(--text-secondary);">
+    <div>
+        Target: &nbsp;
+        <span class="mono text-white" style="font-weight: 600;">
+            {% if selected_symbol == 'TOP_READY' %}
+                Sinyal Siap Beli ({{ ready_symbols|length }} Saham)
+            {% elif selected_symbol == 'ALL' %}
+                Seluruh Universe
+            {% else %}
+                {{ selected_symbol }}
+            {% endif %}
+        </span>
     </div>
-    <div class="text-muted small">
-        Holding: <strong>{{ max_hold }} hari</strong> • Min Score: <strong>{{ min_score }}</strong> • Setup: <strong>{{ selected_setup }}</strong>
+    <div>
+        Holding maks {{ max_hold }} hari &bull; Skor &ge; {{ min_score }} &bull; Setup {{ selected_setup }}
     </div>
 </div>
 
 {% if results %}
-<!-- Metrics Cards -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="stat-card">
-            <div class="text-muted small text-uppercase">Total Trades</div>
-            <div class="stat-val text-white">{{ results.metrics.total_trades }}</div>
-            <div class="text-secondary small">{{ results.metrics.wins }}W / {{ results.metrics.losses }}L</div>
-        </div>
+<!-- Metrics 6-Grid Strip -->
+<div class="grid-4" style="gap: 16px; margin-bottom: 32px;">
+    <div class="card card-sm">
+        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px;">Total Trade</div>
+        <div class="mono text-white" style="font-size: 24px; font-weight: 700;">{{ results.metrics.total_trades }}</div>
+        <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;">{{ results.metrics.wins }} Menang / {{ results.metrics.losses }} Kalah</div>
     </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="stat-card">
-            <div class="text-muted small text-uppercase">Win Rate</div>
-            <div class="stat-val {% if results.metrics.win_rate >= 50 %}text-success{% else %}text-warning{% endif %}">
-                {{ results.metrics.win_rate }}%
-            </div>
-            <div class="text-secondary small">Historical Accuracy</div>
+    <div class="card card-sm">
+        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px;">Win Rate</div>
+        <div class="mono {% if results.metrics.win_rate >= 50 %}text-green{% else %}text-red{% endif %}" style="font-size: 24px; font-weight: 700;">
+            {{ results.metrics.win_rate }}%
         </div>
+        <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;">Akurasi Sinyal</div>
     </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="stat-card">
-            <div class="text-muted small text-uppercase">Profit Factor</div>
-            <div class="stat-val {% if results.metrics.profit_factor >= 1.5 %}text-success{% else %}text-info{% endif %}">
-                {{ results.metrics.profit_factor }}
-            </div>
-            <div class="text-secondary small">Gross Profit / Gross Loss</div>
-        </div>
+    <div class="card card-sm">
+        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px;">Profit Factor</div>
+        <div class="mono text-accent" style="font-size: 24px; font-weight: 700;">{{ results.metrics.profit_factor }}</div>
+        <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;">Gross Win / Loss</div>
     </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="stat-card">
-            <div class="text-muted small text-uppercase">Average R</div>
-            <div class="stat-val text-info">
-                {{ "%+.2f"|format(results.metrics.avg_r) }}R
-            </div>
-            <div class="text-secondary small">Per-trade expectation</div>
-        </div>
-    </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="stat-card">
-            <div class="text-muted small text-uppercase">Expectancy</div>
-            <div class="stat-val text-primary">
-                {{ "%+.2f"|format(results.metrics.expectancy) }}
-            </div>
-            <div class="text-secondary small">R-multiple edge</div>
-        </div>
-    </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="stat-card">
-            <div class="text-muted small text-uppercase">Max Drawdown</div>
-            <div class="stat-val text-danger">
-                -{{ results.metrics.max_drawdown }}%
-            </div>
-            <div class="text-secondary small">Simulated peak-to-trough</div>
-        </div>
+    <div class="card card-sm">
+        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px;">Rata-rata R</div>
+        <div class="mono text-white" style="font-size: 24px; font-weight: 700;">{{ results.metrics.avg_r }}R</div>
+        <div style="font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;">Ekspektansi per trade</div>
     </div>
 </div>
 
-<!-- Strategy Breakdown & Equity Curve -->
-<div class="row g-4 mb-4">
-    <div class="col-lg-5">
-        <div class="card p-3 h-100">
-            <h5 class="fw-bold text-white mb-3"><i class="bi bi-pie-chart text-info me-2"></i>Setup Performance</h5>
-            <div class="table-responsive">
-                <table class="table table-dark table-sm align-middle mb-0">
-                    <thead>
-                        <tr class="text-secondary small text-uppercase border-bottom border-secondary">
-                            <th>Setup</th>
-                            <th>Trades</th>
-                            <th>Win Rate</th>
-                            <th>Avg R</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for setup_name, sdata in results.metrics.setup_breakdown.items() %}
-                        <tr>
-                            <td>
-                                {% if setup_name == 'PULLBACK' %}
-                                    <span class="badge badge-pullback">PULLBACK</span>
-                                {% elif setup_name == 'BREAKOUT' %}
-                                    <span class="badge badge-breakout">BREAKOUT</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">{{ setup_name }}</span>
-                                {% endif %}
-                            </td>
-                            <td class="mono">{{ sdata.trades }}</td>
-                            <td class="mono {% if sdata.win_rate >= 50 %}text-success{% else %}text-warning{% endif %}">
-                                {{ sdata.win_rate }}%
-                            </td>
-                            <td class="mono text-info">{{ "%+.2f"|format(sdata.avg_r) }}R</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-lg-7">
-        <div class="card p-3 h-100">
-            <h5 class="fw-bold text-white mb-2"><i class="bi bi-graph-up text-success me-2"></i>Simulated Equity Curve</h5>
-            <div id="equityChart" style="height: 220px; width: 100%;"></div>
-        </div>
-    </div>
+<!-- Trade History Table -->
+<div class="flex items-center justify-between" style="margin-bottom: 16px;">
+    <h2 style="font-size: 15px;">Daftar Transaksi Simulasi</h2>
+    <span style="font-size: 12px; color: var(--text-secondary);">Total {{ results.trades|length }} transaksi</span>
 </div>
 
-<!-- Trade Journal Table -->
-<div class="card overflow-hidden">
-    <div class="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
-        <h5 class="fw-bold text-white mb-0"><i class="bi bi-journal-text text-warning me-2"></i>Simulated Trade Journal</h5>
-        <span class="small text-muted">{{ results.trades|length }} Completed Trades</span>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-dark table-hover align-middle mb-0">
-            <thead>
-                <tr class="text-secondary small text-uppercase">
-                    <th class="ps-3 py-3">#</th>
-                    <th>Symbol</th>
-                    <th>Setup</th>
-                    <th>Entry Date</th>
-                    <th>Entry Price</th>
-                    <th>Exit Date</th>
-                    <th>Exit Price</th>
-                    <th>PnL %</th>
-                    <th>R Achieved</th>
-                    <th>Exit Reason</th>
-                    <th>Result</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if results.trades %}
-                    {% for t in results.trades %}
-                    <tr>
-                        <td class="ps-3 text-muted">{{ loop.index }}</td>
-                        <td class="fw-bold text-white">
-                            <a href="/stock/{{ t.symbol }}" class="text-white text-decoration-none hover-primary">{{ t.symbol }}</a>
-                        </td>
-                        <td>
-                            {% if t.setup == 'PULLBACK' %}
-                                <span class="badge badge-pullback">PULLBACK</span>
-                            {% elif t.setup == 'BREAKOUT' %}
-                                <span class="badge badge-breakout">BREAKOUT</span>
-                            {% else %}
-                                <span class="badge bg-secondary">{{ t.setup }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="mono small">{{ t.entry_date }}</td>
-                        <td class="mono">Rp {{ "{:,.0f}".format(t.entry_price) }}</td>
-                        <td class="mono small">{{ t.exit_date }}</td>
-                        <td class="mono">Rp {{ "{:,.0f}".format(t.exit_price) }}</td>
-                        <td class="mono fw-bold {% if t.pnl_pct > 0 %}text-success{% else %}text-danger{% endif %}">
-                            {{ "%+.2f"|format(t.pnl_pct) }}%
-                        </td>
-                        <td class="mono {% if t.r_multiple > 0 %}text-info fw-bold{% else %}text-muted{% endif %}">
-                            {{ "%+.2f"|format(t.r_multiple) }}R
-                        </td>
-                        <td class="small text-muted">{{ t.exit_reason }}</td>
-                        <td>
-                            {% if t.result == 'WIN' %}
-                                <span class="badge bg-success">WIN</span>
-                            {% else %}
-                                <span class="badge bg-danger">LOSS</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="11" class="text-center py-4 text-muted">
-                            No trades triggered under selected criteria. Try adjusting setup filters or min score.
-                        </td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
+{% if results.trades %}
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Saham</th>
+                <th>Entry Date</th>
+                <th>Exit Date</th>
+                <th>Setup</th>
+                <th>Entry</th>
+                <th>Exit</th>
+                <th>P&amp;L %</th>
+                <th>R-Multiple</th>
+                <th>Alasan Keluar</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in results.trades %}
+            <tr>
+                <td style="color: var(--text-secondary); font-size: 12px;">{{ loop.index }}</td>
+                <td style="font-weight: 600;">{{ t.symbol }}</td>
+                <td class="mono" style="font-size: 12px;">{{ t.entry_date }}</td>
+                <td class="mono" style="font-size: 12px;">{{ t.exit_date }}</td>
+                <td>
+                    {% if t.setup == 'PULLBACK' %}
+                        <span style="font-size: 11.5px; color: var(--accent);">Pullback</span>
+                    {% else %}
+                        <span style="font-size: 11.5px; color: #60a5fa;">Breakout</span>
+                    {% endif %}
+                </td>
+                <td class="mono">Rp {{ "{:,.0f}".format(t.entry_price) }}</td>
+                <td class="mono">Rp {{ "{:,.0f}".format(t.exit_price) }}</td>
+                <td class="mono {% if t.pnl_pct >= 0 %}text-green{% else %}text-red{% endif %}" style="font-weight: 600;">
+                    {{ "%+.2f"|format(t.pnl_pct) }}%
+                </td>
+                <td class="mono {% if t.r_multiple >= 0 %}text-green{% else %}text-red{% endif %}" style="font-weight: 600;">
+                    {{ "%+.2f"|format(t.r_multiple) }}R
+                </td>
+                <td style="font-size: 12px; color: var(--text-secondary);">
+                    {{ t.exit_reason }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <i data-lucide="info"></i>
+        <h3 style="font-size: 15px; margin-bottom: 6px;">Tidak ada transaksi</h3>
+        <p>Tidak ada transaksi yang cocok dengan kriteria filter skor dan holding period di atas.</p>
     </div>
 </div>
 {% endif %}
-{% endblock %}
 
-{% block scripts %}
-<script>
-    // Form submit loading feedback
-    document.getElementById('backtestForm').addEventListener('submit', function() {
-        document.getElementById('btnSpinner').classList.remove('d-none');
-        document.getElementById('btnIcon').classList.add('d-none');
-        document.getElementById('btnText').innerText = 'RUNNING...';
-        document.getElementById('btnSubmitBt').disabled = true;
-    });
-
-    {% if results and results.metrics.equity_curve %}
-    const equityData = {{ results.metrics.equity_curve | tojson }};
-    const eqContainer = document.getElementById('equityChart');
-    if (eqContainer && equityData && equityData.length > 0) {
-        const chart = LightweightCharts.createChart(eqContainer, {
-            width: eqContainer.clientWidth,
-            height: 220,
-            layout: {
-                background: { color: '#151b26' },
-                textColor: '#94a3b8',
-            },
-            grid: {
-                vertLines: { color: '#1e293b' },
-                horzLines: { color: '#1e293b' },
-            },
-            timeScale: {
-                borderColor: '#232d3f',
-            },
-            rightPriceScale: {
-                borderColor: '#232d3f',
-            }
-        });
-
-        const areaSeries = chart.addAreaSeries({
-            topColor: 'rgba(16, 185, 129, 0.4)',
-            bottomColor: 'rgba(16, 185, 129, 0.0)',
-            lineColor: '#10b981',
-            lineWidth: 2,
-        });
-
-        const chartPoints = equityData.map(d => ({
-            time: d.date || `Trade ${d.trade}`,
-            value: d.equity
-        }));
-        
-        try {
-            areaSeries.setData(chartPoints);
-        } catch(e) {
-            console.log("Equity chart render:", e);
-        }
-
-        window.addEventListener('resize', () => {
-            chart.applyOptions({ width: eqContainer.clientWidth });
-        });
-    }
-    {% endif %}
-</script>
+{% endif %}
 {% endblock %}

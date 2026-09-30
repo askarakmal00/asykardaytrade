@@ -9,3 +9,7 @@ ta
 python-dotenv
 httpx
 pytz
+psycopg2-binary
+apscheduler
+requests
+curl_cffi

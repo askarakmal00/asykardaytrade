@@ -3,7 +3,16 @@ import os
 import datetime
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+def _get_insert_fn(db: Session):
+    try:
+        if db.bind and db.bind.dialect.name == "postgresql":
+            return pg_insert
+    except Exception:
+        pass
+    return sqlite_insert
 
 from app.database.models import Symbol, DailyPrice, IntradayPrice, Signal, ScanRun, PortfolioHolding
 
@@ -82,7 +91,8 @@ def save_daily_prices(db: Session, symbol_id: int, df: pd.DataFrame):
     if not records:
         return
 
-    stmt = insert(DailyPrice).values(records)
+    ins_fn = _get_insert_fn(db)
+    stmt = ins_fn(DailyPrice).values(records)
     update_dict = {
         'open':   stmt.excluded.open,
         'high':   stmt.excluded.high,
@@ -124,7 +134,8 @@ def save_intraday_prices(db: Session, symbol_id: int, df: pd.DataFrame, interval
     if not records:
         return
 
-    stmt = insert(IntradayPrice).values(records)
+    ins_fn = _get_insert_fn(db)
+    stmt = ins_fn(IntradayPrice).values(records)
     update_dict = {
         'open': stmt.excluded.open,
         'high': stmt.excluded.high,

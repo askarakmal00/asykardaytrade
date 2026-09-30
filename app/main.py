@@ -9,7 +9,13 @@ import datetime
 import math
 import pytz
 import pandas as pd
-from typing import Optional
+from typing import Optional, List, Dict, Any
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    HAS_APSCHEDULER = True
+except ImportError:
+    BackgroundScheduler = None
+    HAS_APSCHEDULER = False
 
 TZ_JAKARTA = pytz.timezone("Asia/Jakarta")
 
@@ -38,8 +44,6 @@ from app.services import portfolio_ai_analyst
 from app.backtest.engine import BacktestEngine
 
 
-
-
 # Global state for scanner status and caching
 latest_scan_data = {
     "top_10": [],
@@ -56,7 +60,7 @@ latest_scan_data = {
 
 scan_status = {
     "status": "idle",
-    "last_update": "System ready. Click Update Market Data or Run Screener."
+    "last_update": "Sistem siap. Klik Perbarui Data atau Jalankan Scan."
 }
 
 scan_progress = {
@@ -64,6 +68,61 @@ scan_progress = {
     "total": 0,
     "phase": "idle",   # idle | downloading | scanning
 }
+
+
+# APScheduler — auto daily update at 17:00 WIB on trading days
+if HAS_APSCHEDULER:
+    scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
+else:
+    scheduler = None
+
+
+def auto_daily_update():
+    """Runs automatically at 17:00 WIB on weekdays (IDX trading days)."""
+    global scan_status, latest_scan_data, scan_progress
+    scan_status["status"] = "downloading"
+    scan_status["last_update"] = "Update otomatis 17:00 WIB dimulai..."
+    try:
+        db = next(get_db())
+
+        def cb(cur, tot):
+            scan_progress["current"] = cur
+            scan_progress["total"] = tot
+            scan_progress["phase"] = "downloading"
+
+        market_data.update_market_data(db, progress_callback=cb)
+
+        scan_status["status"] = "scanning"
+        scan_progress["phase"] = "scanning"
+        scan_progress["current"] = 0
+
+        def scb(cur, tot):
+            scan_progress["current"] = cur
+            scan_progress["total"] = tot
+
+        latest_scan_data = scanner_service.run_scanner(db, progress_callback=scb)
+        db.close()
+        scan_status["status"] = "idle"
+        scan_progress["phase"] = "idle"
+        scan_status["last_update"] = (
+            f"Auto-update selesai. {latest_scan_data.get('ready_count', 0)} sinyal siap."
+        )
+    except Exception as e:
+        scan_status["status"] = "error"
+        scan_status["last_update"] = f"Auto-update error: {e}"
+        scan_progress["phase"] = "idle"
+
+
+# Schedule: Mon-Fri at 17:00 WIB
+if scheduler:
+    scheduler.add_job(
+        auto_daily_update,
+        'cron',
+        day_of_week='mon-fri',
+        hour=17,
+        minute=0,
+        id='auto_daily_update'
+    )
 
 
 @asynccontextmanager
@@ -78,9 +137,16 @@ async def lifespan(app: FastAPI):
         print(f"Startup symbol seeding note: {e}")
     finally:
         db.close()
+    # Start APScheduler if available
+    if scheduler:
+        scheduler.start()
     yield
+    # Shutdown APScheduler gracefully
+    if scheduler:
+        scheduler.shutdown(wait=False)
 
-app = FastAPI(title="IDX Day Trade Signal System", version="1.0.0", lifespan=lifespan)
+
+app = FastAPI(title="IDX Day Trade Signal System", version="2.0.0", lifespan=lifespan)
 
 # Setup templates and static
 os.makedirs("app/static", exist_ok=True)
@@ -97,27 +163,28 @@ def get_market_status_info() -> dict:
     if is_weekday:
         if (9, 0) <= (hour, minute) <= (16, 0):
             is_open = True
-            status_text = "OPEN"
-            status_desc = "Regular IDX trading session is active (09:00 – 16:00 WIB)."
+            status_text = "BUKA"
+            status_desc = "Sesi reguler IDX aktif (09:00 – 16:00 WIB)."
         elif (hour, minute) < (9, 0):
             is_open = False
             status_text = "PRE-MARKET"
-            status_desc = "Market opens today at 09:00 WIB."
+            status_desc = "Pasar buka hari ini pukul 09:00 WIB."
         else:
             is_open = False
-            status_text = "CLOSED"
-            status_desc = f"Session closed at 16:00 WIB. Signals shown below are based on latest available data."
+            status_text = "TUTUP"
+            status_desc = "Sesi tutup pukul 16:00 WIB. Sinyal berdasarkan data terkini."
     else:
         is_open = False
-        status_text = "CLOSED (WEEKEND)"
-        status_desc = "Weekend. Signals shown below are based on latest available data."
+        status_text = "TUTUP (WEEKEND)"
+        status_desc = "Akhir pekan. Sinyal berdasarkan data sesi terakhir."
 
     return {
         "is_open": is_open,
         "status_text": status_text,
         "status_desc": status_desc,
         "current_time_wib": now_wib.strftime("%d %b %Y %H:%M WIB"),
-        "today_str": now_wib.strftime("%d %b %Y")
+        "today_str": now_wib.strftime("%d %b %Y"),
+        "day_name": ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"][weekday],
     }
 
 # ----------------- HTML Pages -----------------
@@ -126,7 +193,7 @@ def get_market_status_info() -> dict:
 def home(request: Request, db: Session = Depends(get_db)):
     symbols = repositories.get_active_symbols(db)
     total_symbols = len(symbols)
-    
+
     # If no scan run yet, try running scanner once in memory or use cached
     global latest_scan_data
     if not latest_scan_data["all"]:
@@ -179,7 +246,7 @@ def stock_detail_page(symbol: str, request: Request, db: Session = Depends(get_d
     if not stock:
         # Try with .JK suffix if omitted
         stock = scanner_service.process_symbol_detail(db, f"{symbol.upper()}.JK")
-        
+
     if not stock:
         raise HTTPException(status_code=404, detail=f"Stock {symbol} not found in database universe.")
 
@@ -208,11 +275,9 @@ def backtest_page(
     global latest_scan_data
     symbols_list = repositories.get_active_symbols(db)
     ready_symbols = [r["symbol"] for r in latest_scan_data.get("ready_candidates", [])]
-    
-    # Target symbol selection
-    # Default to TOP_READY or first symbol for instant page load
+
     target_symbol = symbol if symbol is not None else ("TOP_READY" if ready_symbols else (symbols_list[0].symbol if symbols_list else "ALL"))
-    
+
     selected_syms = None
     if target_symbol == "TOP_READY":
         selected_syms = ready_symbols if ready_symbols else [s.symbol for s in symbols_list[:18]]
@@ -315,17 +380,14 @@ def debug_market_data(symbol: str, request: Request):
         diff = current_price - prev_close
         diff_pct = (diff / prev_close * 100) if prev_close else 0
         explanation = (
-            f"The application previously showed daily_ohlcv['Close'].iloc[-1] = Rp {daily_close:,.0f} "
-            f"(previous session close, labeled as 'Current Price' — INCORRECT). "
-            f"The real current price is fast_info.last_price = Rp {current_price:,.0f}. "
-            f"Previous close (yesterday) = Rp {prev_close:,.0f}. "
-            f"Today's price change = {diff:+,.0f} ({diff_pct:+.2f}%). "
-            f"Yahoo Finance daily candle for today's session may appear as NaN until session closes."
+            f"Real current price (fast_info.last_price): Rp {current_price:,.0f}. "
+            f"Previous close: Rp {prev_close:,.0f}. "
+            f"Daily OHLCV last close: Rp {daily_close:,.0f}. "
+            f"Today's change: {diff:+,.0f} ({diff_pct:+.2f}%)."
         )
     else:
         explanation = "Unable to compute discrepancy — one or more price sources returned None."
 
-    # Market state heuristic (IDX: 09:00–16:00 WIB, Mon-Fri)
     weekday = now_wib.weekday()
     hour = now_wib.hour
     minute = now_wib.minute
@@ -357,13 +419,13 @@ def update_data_endpoint(background_tasks: BackgroundTasks):
     def task():
         global scan_status, latest_scan_data, scan_progress
         scan_status["status"] = "downloading"
-        scan_status["last_update"] = "Starting fast batch download from Yahoo Finance..."
+        scan_status["last_update"] = "Memulai download data pasar dari Yahoo Finance..."
         scan_progress["phase"] = "downloading"
         scan_progress["current"] = 0
         scan_progress["total"] = 0
         try:
-            def progress(processed, total, info, step):
-                scan_status["last_update"] = f"Downloading [{processed}/{total}] ({info})..."
+            def progress(processed, total):
+                scan_status["last_update"] = f"Mendownload [{processed}/{total}] saham..."
                 scan_progress["current"] = processed
                 scan_progress["total"] = total
                 scan_progress["phase"] = "downloading"
@@ -373,7 +435,7 @@ def update_data_endpoint(background_tasks: BackgroundTasks):
 
             # Automatically run scanner after fresh data download
             scan_status["status"] = "scanning"
-            scan_status["last_update"] = "Data updated. Computing technical indicators and strategy setups..."
+            scan_status["last_update"] = "Data diperbarui. Menghitung indikator dan setup..."
             scan_progress["phase"] = "scanning"
             scan_progress["current"] = 0
             scan_progress["total"] = 0
@@ -386,22 +448,26 @@ def update_data_endpoint(background_tasks: BackgroundTasks):
 
             db_bg.close()
             scan_status["status"] = "idle"
-            scan_status["last_update"] = f"Update complete. Found {latest_scan_data['ready_count']} Ready to Action signals ({latest_scan_data['a_plus_count']} A+, {latest_scan_data['a_count']} A) from {latest_scan_data['scanned_count']} stocks."
+            scan_status["last_update"] = (
+                f"Update selesai. {latest_scan_data['ready_count']} sinyal siap "
+                f"({latest_scan_data['a_plus_count']} A+, {latest_scan_data['a_count']} A) "
+                f"dari {latest_scan_data['scanned_count']} saham."
+            )
             scan_progress["phase"] = "idle"
         except Exception as e:
             scan_status["status"] = "error"
-            scan_status["last_update"] = f"Error during update: {e}"
+            scan_status["last_update"] = f"Error saat update: {e}"
             scan_progress["phase"] = "idle"
 
     background_tasks.add_task(task)
-    return {"message": "Market data update initiated in background"}
+    return {"message": "Update data pasar dimulai di background"}
 
 @app.post("/api/run-scanner")
 def run_scanner_endpoint(background_tasks: BackgroundTasks):
     def task():
         global scan_status, latest_scan_data, scan_progress
         scan_status["status"] = "scanning"
-        scan_status["last_update"] = "Evaluating trend, momentum, setups, and trade parameters..."
+        scan_status["last_update"] = "Mengevaluasi trend, momentum, setup, dan parameter trading..."
         scan_progress["phase"] = "scanning"
         scan_progress["current"] = 0
         scan_progress["total"] = 0
@@ -415,15 +481,19 @@ def run_scanner_endpoint(background_tasks: BackgroundTasks):
             latest_scan_data = scanner_service.run_scanner(db_bg, progress_callback=scan_progress_cb)
             db_bg.close()
             scan_status["status"] = "idle"
-            scan_status["last_update"] = f"Scan complete. Found {latest_scan_data['ready_count']} Ready to Action signals ({latest_scan_data['a_plus_count']} A+, {latest_scan_data['a_count']} A) from {latest_scan_data['scanned_count']} stocks."
+            scan_status["last_update"] = (
+                f"Scan selesai. {latest_scan_data['ready_count']} sinyal siap "
+                f"({latest_scan_data['a_plus_count']} A+, {latest_scan_data['a_count']} A) "
+                f"dari {latest_scan_data['scanned_count']} saham."
+            )
             scan_progress["phase"] = "idle"
         except Exception as e:
             scan_status["status"] = "error"
-            scan_status["last_update"] = f"Error during scanner execution: {e}"
+            scan_status["last_update"] = f"Error saat scan: {e}"
             scan_progress["phase"] = "idle"
 
     background_tasks.add_task(task)
-    return {"message": "Scanner started in background"}
+    return {"message": "Scanner dimulai di background"}
 
 @app.get("/api/status")
 def get_status():
@@ -470,7 +540,6 @@ async def get_ai_analysis(symbol: str, db: Session = Depends(get_db)):
             }
         )
 
-    # If result contains error dict (e.g. missing API key)
     if "error" in result:
         return JSONResponse(status_code=200, content=result)
 
@@ -512,7 +581,7 @@ def portfolio_detail_page(request: Request, holding_id: int, db: Session = Depen
         name="portfolio_detail.html",
         context={
             "active_page": "portfolio",
-            "holding":     enriched,
+            "holding": enriched,
         }
     )
 
@@ -527,9 +596,9 @@ def api_get_portfolio(db: Session = Depends(get_db)):
     try:
         summary = portfolio_service.get_portfolio_summary(db)
         return JSONResponse(content={
-            "holdings":  summary["enriched_holdings"],
-            "summary":   {k: v for k, v in summary.items() if k != "enriched_holdings"},
-            "count":     summary["num_holdings"],
+            "holdings": summary["enriched_holdings"],
+            "summary": {k: v for k, v in summary.items() if k != "enriched_holdings"},
+            "count": summary["num_holdings"],
             "price_note": summary["price_note"],
         })
     except Exception as e:
@@ -564,7 +633,6 @@ async def api_create_holding(request: Request, db: Session = Depends(get_db)):
     except Exception:
         return JSONResponse(content={"error": "Invalid JSON body"}, status_code=400)
 
-    # Validasi required fields
     errors = []
     if not data.get("symbol"):
         errors.append("symbol wajib diisi")
@@ -626,10 +694,6 @@ def api_delete_holding(holding_id: int, db: Session = Depends(get_db)):
 async def api_portfolio_ai_analysis(db: Session = Depends(get_db)):
     """
     AI analysis untuk seluruh portfolio (on-demand).
-
-    Returns:
-        portfolio_score, health_status, summary, per-stock actions,
-        concentration risk, suggestions
     """
     if not config.AI_ENABLED:
         return JSONResponse(content={
@@ -664,9 +728,6 @@ async def api_portfolio_ai_analysis(db: Session = Depends(get_db)):
 async def api_holding_ai_analysis(holding_id: int, db: Session = Depends(get_db)):
     """
     AI analysis untuk satu posisi (on-demand).
-
-    Returns:
-        action, confidence, summary, reason, risk, suggested_action, suggested_sl/tp
     """
     if not config.AI_ENABLED:
         return JSONResponse(content={
@@ -680,7 +741,7 @@ async def api_holding_ai_analysis(holding_id: int, db: Session = Depends(get_db)
 
     try:
         enriched = portfolio_service.enrich_holding(db, holding)
-        result   = await portfolio_ai_analyst.analyze_position(enriched)
+        result = await portfolio_ai_analyst.analyze_position(enriched)
         return JSONResponse(content=result)
     except Exception as e:
         return JSONResponse(content={
@@ -688,5 +749,3 @@ async def api_holding_ai_analysis(holding_id: int, db: Session = Depends(get_db)
             "error": str(e),
             "message": "AI analysis gagal — coba lagi."
         }, status_code=500)
-
-

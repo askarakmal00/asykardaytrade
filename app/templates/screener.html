@@ -1,314 +1,253 @@
 {% extends "base.html" %}
 {% set active_page = "screener" %}
 
+{% block title %}Screener Universe — IDX Signal{% endblock %}
+
 {% block content %}
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+<!-- Page Header -->
+<div class="flex items-center justify-between" style="margin-bottom: 24px;">
     <div>
-        <h3 class="fw-bold mb-1 text-white"><i class="bi bi-filter-square text-primary me-2"></i>Screener Universe</h3>
-        <p class="text-muted small mb-0">Evaluasi teknikal seluruh saham IDX — temukan setup yang actionable dan siap dieksekusi.</p>
+        <h1 style="font-size: 22px; margin-bottom: 6px;">Screener Universe</h1>
+        <p style="color: var(--text-secondary); font-size: 13px;">
+            Daftar seluruh saham IDX dengan status teknikal dan parameter risiko.
+        </p>
     </div>
-    <div class="d-flex gap-2">
-        <button id="btnRunScannerPage" class="btn btn-glow-success px-3 fw-semibold">
-            <i class="bi bi-play-circle me-1"></i> Re-Run Screener
-        </button>
+    <div style="font-size: 13px; color: var(--text-secondary);">
+        Menampilkan <span id="visibleCount" class="mono text-white" style="font-weight: 600;">{{ all_candidates|length }}</span> dari {{ all_candidates|length }} saham
     </div>
 </div>
 
-<!-- Status Quick Filter Pills -->
-<div class="d-flex flex-wrap gap-2 mb-3">
-    <button class="btn btn-sm btn-outline-secondary active quick-status-btn" data-status="">ALL</button>
-    <button class="btn btn-sm btn-outline-success quick-status-btn" data-status="READY">
-        <i class="bi bi-check-circle me-1"></i>READY
-    </button>
-    <button class="btn btn-sm btn-outline-warning quick-status-btn" data-status="WAIT">
-        <i class="bi bi-hourglass-split me-1"></i>WAIT (PB / BO)
-    </button>
-    <button class="btn btn-sm btn-outline-info quick-status-btn" data-status="WATCH">
-        <i class="bi bi-eye me-1"></i>WATCH
-    </button>
-    <button class="btn btn-sm btn-outline-danger quick-status-btn" data-status="NO_TRADE">
-        <i class="bi bi-x-octagon me-1"></i>NO TRADE
-    </button>
+<!-- Quick Status Filter Pills -->
+<div class="flex items-center gap-2" style="margin-bottom: 16px; flex-wrap: wrap;">
+    <button class="btn btn-sm btn-amber filter-status-btn active" data-status="">Semua</button>
+    <button class="btn btn-sm btn-outline filter-status-btn" data-status="READY">Siap Beli</button>
+    <button class="btn btn-sm btn-outline filter-status-btn" data-status="WAIT">Tunggu Setup</button>
+    <button class="btn btn-sm btn-outline filter-status-btn" data-status="WATCH">Watchlist</button>
+    <button class="btn btn-sm btn-outline filter-status-btn" data-status="NO_TRADE">No Trade</button>
 </div>
 
-<!-- Detailed Filters Bar -->
-<div class="card p-3 mb-4">
-    <div class="row g-3 align-items-center">
-        <div class="col-md-3">
-            <div class="input-group">
-                <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-search"></i></span>
-                <input type="text" id="searchInput" class="form-control bg-dark border-secondary text-white" placeholder="Search ticker or name...">
-            </div>
+<!-- Detailed Filter Controls -->
+<div class="card card-sm" style="margin-bottom: 24px;">
+    <div class="grid-4" style="gap: 12px; align-items: center;">
+        <div>
+            <input type="text" id="searchInput" placeholder="Cari kode saham atau nama...">
         </div>
-        <div class="col-6 col-md-2">
-            <select id="gradeFilter" class="form-select bg-dark border-secondary text-white">
-                <option value="">All Grades</option>
-                <option value="A+">Grade A+</option>
-                <option value="A">Grade A</option>
-                <option value="WATCH">Grade WATCH</option>
-                <option value="LOW QUALITY">Low Quality</option>
-                <option value="NO TRADE">No Trade</option>
-            </select>
-        </div>
-        <div class="col-6 col-md-2">
-            <select id="setupFilter" class="form-select bg-dark border-secondary text-white">
-                <option value="">All Setups</option>
+        <div>
+            <select id="setupFilter">
+                <option value="">Semua Setup</option>
                 <option value="PULLBACK">Pullback</option>
                 <option value="BREAKOUT">Breakout</option>
-                <option value="NONE">None</option>
+                <option value="NONE">Tanpa Setup</option>
             </select>
         </div>
-        <div class="col-6 col-md-2">
-            <select id="validityFilter" class="form-select bg-dark border-secondary text-white">
-                <option value="">All Validity</option>
-                <option value="VALID">Entry VALID</option>
-                <option value="MISSED">MISSED (Chasing)</option>
-                <option value="EXTENDED">EXTENDED</option>
+        <div>
+            <select id="validityFilter">
+                <option value="">Semua Validitas</option>
+                <option value="VALID">Zona Valid</option>
+                <option value="MISSED">Terlewat (Missed)</option>
+                <option value="EXTENDED">Over-extended</option>
+                <option value="INVALID">Tidak Valid</option>
             </select>
         </div>
-        <div class="col-6 col-md-2">
-            <select id="freshnessFilter" class="form-select bg-dark border-secondary text-white">
-                <option value="">All Freshness</option>
-                <option value="FRESH">FRESH (&le;60m)</option>
-                <option value="AGING">AGING (60-180m)</option>
-                <option value="STALE">STALE (&gt;180m)</option>
+        <div>
+            <select id="minScoreFilter">
+                <option value="0">Semua Skor</option>
+                <option value="75">Skor &ge; 75 (Siap)</option>
+                <option value="60">Skor &ge; 60 (Potensial)</option>
+                <option value="50">Skor &ge; 50</option>
             </select>
-        </div>
-        <div class="col-12 col-md-1 text-md-end">
-            <span class="small text-muted"><span id="visibleCount" class="fw-bold text-white fs-6">{{ all_candidates|length }}</span></span>
         </div>
     </div>
 </div>
 
 <!-- Table Card -->
-<div class="card overflow-hidden">
-    <div class="table-responsive">
-        <table class="table table-dark table-hover align-middle mb-0" id="screenerTable">
-            <thead>
-                <tr class="text-secondary small text-uppercase border-bottom border-secondary">
-                    <th class="ps-3 py-3">Rank</th>
-                    <th>Symbol</th>
-                    <th>Price</th>
-                    <th data-bs-toggle="tooltip" title="Signal Score: Quality score from the technical engine (0-100). NOT probability.">
-                        Score <i class="bi bi-info-circle"></i>
-                    </th>
-                    <th data-bs-toggle="tooltip" title="Grade: Setup quality classification (A+, A, WATCH, LOW QUALITY, NO TRADE).">
-                        Grade <i class="bi bi-info-circle"></i>
-                    </th>
-                    <th data-bs-toggle="tooltip" title="Setup: PULLBACK or BREAKOUT pattern.">
-                        Setup <i class="bi bi-info-circle"></i>
-                    </th>
-                    <th data-bs-toggle="tooltip" title="Action state: READY, WAIT_PULLBACK, WAIT_BREAKOUT, WATCH, NO_TRADE.">
-                        Status <i class="bi bi-info-circle"></i>
-                    </th>
-                    <th data-bs-toggle="tooltip" title="Entry Zone: Recommended execution price window.">
-                        Entry Zone <i class="bi bi-info-circle"></i>
-                    </th>
-                    <th>Stop Loss</th>
-                    <th>TP1</th>
-                    <th data-bs-toggle="tooltip" title="Risk/Reward Ratio (Min: 1:1.5).">
-                        R:R <i class="bi bi-info-circle"></i>
-                    </th>
-                    <th data-bs-toggle="tooltip" title="Freshness: Signal age (<60m FRESH, 60-180m AGING, >180m STALE).">
-                        Freshness <i class="bi bi-info-circle"></i>
-                    </th>
-                    <th>Next Action</th>
-                    <th class="pe-3 text-end">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if all_candidates %}
-                    {% for item in all_candidates %}
-                    <tr class="stock-row" 
-                        data-symbol="{{ item.symbol|lower }}" 
-                        data-name="{{ item.name|lower|default('') }}" 
-                        data-grade="{{ item.grade }}" 
-                        data-setup="{{ item.setup }}" 
-                        data-status="{{ item.status }}"
-                        data-validity="{{ item.entry_validity|default('VALID') }}"
-                        data-freshness="{{ item.freshness|default('FRESH') }}">
-                        <td class="ps-3 fw-bold text-muted">#{{ item.rank|default(loop.index) }}</td>
-                        <td>
-                            <div class="fw-bold text-white">{{ item.symbol }}</div>
-                            <div class="small text-muted text-truncate" style="max-width: 140px;">{{ item.name or '' }}</div>
-                        </td>
-                        <td class="mono fw-bold text-muted">Rp {{ "{:,.0f}".format(item.daily_close|default(item.price)) }}</td>
-                        <td>
-                            <span class="mono fw-bold text-white fs-6">{{ item.score }}</span>
-                        </td>
-                        <td>
-                            {% if item.grade == 'A+' %}
-                                <span class="badge bg-success fw-bold">A+</span>
-                            {% elif item.grade == 'A' %}
-                                <span class="badge bg-primary fw-bold">A</span>
-                            {% elif item.grade == 'WATCH' %}
-                                <span class="badge bg-warning text-dark fw-bold">WATCH</span>
-                            {% elif item.grade == 'LOW QUALITY' %}
-                                <span class="badge bg-secondary">LOW</span>
-                            {% else %}
-                                <span class="badge bg-secondary">NO TRADE</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if item.setup == 'PULLBACK' %}
-                                <span class="badge badge-pullback">PULLBACK</span>
-                            {% elif item.setup == 'BREAKOUT' %}
-                                <span class="badge badge-breakout">BREAKOUT</span>
-                            {% else %}
-                                <span class="badge bg-secondary">NONE</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if item.status == 'READY' %}
-                                <span class="badge badge-ready">READY</span>
-                            {% elif item.status == 'WAIT_PULLBACK' %}
-                                <span class="badge badge-pullback">WAIT PB</span>
-                            {% elif item.status == 'WAIT_BREAKOUT' %}
-                                <span class="badge badge-breakout">WAIT BO</span>
-                            {% elif item.status == 'WATCH' %}
-                                <span class="badge badge-watch">WATCH</span>
-                            {% else %}
-                                <span class="badge badge-notrade">NO TRADE</span>
-                            {% endif %}
-                        </td>
-                        <td class="mono small text-white fw-semibold">{{ item.entry_zone }}</td>
-                        <td class="mono text-danger small">Rp {{ "{:,.0f}".format(item.stop_loss) }}</td>
-                        <td class="mono text-success small">Rp {{ "{:,.0f}".format(item.tp1) }}</td>
-                        <td class="mono fw-semibold {% if item.risk_reward >= 2.0 %}text-success{% elif item.risk_reward >= 1.5 %}text-info{% else %}text-muted{% endif %}">
-                            1:{{ "%.1f"|format(item.risk_reward) }}
-                        </td>
-                        <td>
-                            {% if item.freshness == 'FRESH' %}
-                                <span class="badge badge-fresh">FRESH</span>
-                            {% elif item.freshness == 'AGING' %}
-                                <span class="badge badge-aging">AGING</span>
-                            {% else %}
-                                <span class="badge badge-stale">STALE</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <span class="badge bg-dark border border-secondary text-white small" style="font-size:0.7rem;">
-                                {{ item.next_action|default('MONITOR') }}
-                            </span>
-                        </td>
-                        <td class="pe-3 text-end">
-                            <a href="/stock/{{ item.symbol }}" class="btn btn-sm btn-outline-primary px-3">
-                                Plan &rarr;
-                            </a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="14" class="text-center py-5">
-                            <div class="my-4">
-                                <i class="bi bi-filter-circle fs-1 text-secondary d-block mb-3"></i>
-                                <h5 class="text-white fw-bold">Belum Ada Data Screener</h5>
-                                <p class="text-muted small mx-auto mb-3" style="max-width: 480px;">
-                                    Jalankan scan market data terlebih dahulu dari Dashboard untuk menghitung indikator dan sinyal teknikal seluruh saham.
-                                </p>
-                                <a href="/" class="btn btn-primary btn-sm px-3">
-                                    <i class="bi bi-house me-1"></i> Buka Dashboard
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
-        <div id="noMatchRow" class="text-center py-5 d-none">
-            <i class="bi bi-search fs-2 text-secondary d-block mb-2"></i>
-            <h6 class="text-white fw-semibold mb-1">Tidak ada saham yang cocok dengan filter</h6>
-            <p class="text-muted small mb-0">Coba ubah status, setup, atau kata kunci pencarian.</p>
-        </div>
-    </div>
+<div class="table-wrap">
+    <table id="screenerTable">
+        <thead>
+            <tr>
+                <th style="width: 48px;">#</th>
+                <th>Saham</th>
+                <th>Harga</th>
+                <th>Skor</th>
+                <th>Setup</th>
+                <th>Entry Zone</th>
+                <th>Stop Loss</th>
+                <th>Target (TP1)</th>
+                <th>R:R</th>
+                <th>Validitas</th>
+                <th>Status</th>
+                <th style="width: 40px;"></th>
+            </tr>
+        </thead>
+        <tbody id="screenerTbody">
+            {% for item in all_candidates %}
+            <tr class="candidate-row"
+                data-status="{{ item.status }}"
+                data-setup="{{ item.setup }}"
+                data-validity="{{ item.entry_validity|default('UNKNOWN') }}"
+                data-score="{{ item.score|default(0) }}"
+                data-symbol="{{ item.symbol|lower }}"
+                data-name="{{ (item.name or '')|lower }}">
+                <td style="color: var(--text-secondary); font-size: 12px; font-weight: 500;">
+                    {{ loop.index }}
+                </td>
+                <td>
+                    <div style="font-weight: 600; font-size: 13px;">{{ item.symbol }}</div>
+                    <div class="truncate" style="color: var(--text-secondary); font-size: 11.5px; max-width: 140px;">
+                        {{ item.name or '' }}
+                    </div>
+                </td>
+                <td class="mono">
+                    Rp {{ "{:,.0f}".format(item.daily_close|default(item.price)) }}
+                </td>
+                <td>
+                    <div class="flex items-center gap-2">
+                        <span class="mono" style="font-weight: 600; min-width: 24px;">{{ item.score }}</span>
+                        <div class="progress-bar" style="width: 36px;">
+                            <div class="progress-bar-fill" style="width: {{ item.score }}%;"></div>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    {% if item.setup == 'PULLBACK' %}
+                        <span style="font-size: 11.5px; color: var(--accent); font-weight: 500;">Pullback</span>
+                    {% elif item.setup == 'BREAKOUT' %}
+                        <span style="font-size: 11.5px; color: #60a5fa; font-weight: 500;">Breakout</span>
+                    {% else %}
+                        <span style="font-size: 11.5px; color: var(--text-secondary);">—</span>
+                    {% endif %}
+                </td>
+                <td class="mono" style="font-size: 12px;">{{ item.entry_zone }}</td>
+                <td class="mono text-red" style="font-size: 12px;">
+                    {% if item.stop_loss %}Rp {{ "{:,.0f}".format(item.stop_loss) }}{% else %}—{% endif %}
+                </td>
+                <td class="mono text-green" style="font-size: 12px;">
+                    {% if item.tp1 %}Rp {{ "{:,.0f}".format(item.tp1) }}{% else %}—{% endif %}
+                </td>
+                <td class="mono" style="font-size: 12px; font-weight: 600;
+                    {% if item.risk_reward >= 2.0 %}color: var(--green);
+                    {% elif item.risk_reward >= 1.5 %}color: var(--accent);
+                    {% else %}color: var(--text-secondary);{% endif %}">
+                    {% if item.risk_reward %}{{ "%.1f"|format(item.risk_reward) }}&times;{% else %}—{% endif %}
+                </td>
+                <td>
+                    {% if item.entry_validity == 'VALID' %}
+                        <span style="font-size: 11.5px; color: var(--green); font-weight: 500;">Valid</span>
+                    {% elif item.entry_validity == 'MISSED' %}
+                        <span style="font-size: 11.5px; color: var(--accent); font-weight: 500;">Terlewat</span>
+                    {% elif item.entry_validity == 'EXTENDED' %}
+                        <span style="font-size: 11.5px; color: var(--red); font-weight: 500;">Extended</span>
+                    {% else %}
+                        <span style="font-size: 11.5px; color: var(--text-secondary);">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.status == 'READY' %}
+                        <span class="badge badge-ready">SIAP BELI</span>
+                    {% elif item.status in ['WAIT_PULLBACK', 'WAIT_BREAKOUT'] %}
+                        <span class="badge badge-wait">TUNGGU</span>
+                    {% elif item.status == 'WATCH' %}
+                        <span class="badge badge-watch">WATCHLIST</span>
+                    {% else %}
+                        <span class="badge badge-notrade">NO TRADE</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/stock/{{ item.symbol }}" class="btn btn-amber-outline btn-sm" title="Lihat detail rencana trading">
+                        <i data-lucide="arrow-right"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
     const searchInput = document.getElementById('searchInput');
-    const gradeFilter = document.getElementById('gradeFilter');
     const setupFilter = document.getElementById('setupFilter');
     const validityFilter = document.getElementById('validityFilter');
-    const freshnessFilter = document.getElementById('freshnessFilter');
-    const rows = document.querySelectorAll('.stock-row');
-    const visibleCount = document.getElementById('visibleCount');
-    const noMatchRow = document.getElementById('noMatchRow');
-    const quickStatusBtns = document.querySelectorAll('.quick-status-btn');
+    const minScoreFilter = document.getElementById('minScoreFilter');
+    const statusBtns = document.querySelectorAll('.filter-status-btn');
+    const visibleCountSpan = document.getElementById('visibleCount');
+    const rows = document.querySelectorAll('.candidate-row');
 
-    let currentQuickStatus = '';
+    let currentStatus = '';
 
-    quickStatusBtns.forEach(btn => {
+    statusBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            quickStatusBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentQuickStatus = btn.getAttribute('data-status') || '';
+            statusBtns.forEach(b => {
+                b.classList.remove('btn-amber', 'active');
+                b.classList.add('btn-outline');
+            });
+            btn.classList.remove('btn-outline');
+            btn.classList.add('btn-amber', 'active');
+            currentStatus = btn.dataset.status;
             filterRows();
         });
     });
 
+    [searchInput, setupFilter, validityFilter, minScoreFilter].forEach(el => {
+        el.addEventListener('input', filterRows);
+    });
+
     function filterRows() {
         const query = searchInput.value.toLowerCase().trim();
-        const grade = gradeFilter.value;
         const setup = setupFilter.value;
         const validity = validityFilter.value;
-        const freshness = freshnessFilter.value;
+        const minScore = parseInt(minScoreFilter.value) || 0;
 
-        let count = 0;
-        rows.forEach(r => {
-            const sym = r.getAttribute('data-symbol') || '';
-            const name = r.getAttribute('data-name') || '';
-            const g = r.getAttribute('data-grade') || '';
-            const stp = r.getAttribute('data-setup') || '';
-            const sts = r.getAttribute('data-status') || '';
-            const val = r.getAttribute('data-validity') || '';
-            const fsh = r.getAttribute('data-freshness') || '';
+        let visible = 0;
 
-            const matchQuery = !query || sym.includes(query) || name.includes(query);
-            const matchGrade = !grade || g === grade;
-            const matchSetup = !setup || stp === setup;
-            const matchValidity = !validity || val === validity;
-            const matchFreshness = !freshness || fsh === freshness;
+        rows.forEach(row => {
+            const rStatus = row.dataset.status;
+            const rSetup = row.dataset.setup;
+            const rValidity = row.dataset.validity;
+            const rScore = parseInt(row.dataset.score) || 0;
+            const rSymbol = row.dataset.symbol;
+            const rName = row.dataset.name;
 
-            let matchQuickStatus = true;
-            if (currentQuickStatus === 'READY') {
-                matchQuickStatus = sts === 'READY';
-            } else if (currentQuickStatus === 'WAIT') {
-                matchQuickStatus = sts.startsWith('WAIT');
-            } else if (currentQuickStatus === 'WATCH') {
-                matchQuickStatus = sts === 'WATCH';
-            } else if (currentQuickStatus === 'NO_TRADE') {
-                matchQuickStatus = sts === 'NO_TRADE';
+            let match = true;
+
+            // Status filter
+            if (currentStatus === 'READY' && rStatus !== 'READY') match = false;
+            else if (currentStatus === 'WAIT' && !rStatus.startsWith('WAIT')) match = false;
+            else if (currentStatus === 'WATCH' && rStatus !== 'WATCH') match = false;
+            else if (currentStatus === 'NO_TRADE' && rStatus !== 'NO_TRADE' && rStatus !== 'DATA_UNAVAILABLE') match = false;
+
+            // Search query
+            if (match && query && !rSymbol.includes(query) && !rName.includes(query)) {
+                match = false;
             }
 
-            if (matchQuery && matchGrade && matchSetup && matchValidity && matchFreshness && matchQuickStatus) {
-                r.style.display = '';
-                count++;
+            // Setup
+            if (match && setup && rSetup !== setup) {
+                match = false;
+            }
+
+            // Validity
+            if (match && validity && rValidity !== validity) {
+                match = false;
+            }
+
+            // Score
+            if (match && minScore > 0 && rScore < minScore) {
+                match = false;
+            }
+
+            if (match) {
+                row.style.display = '';
+                visible++;
             } else {
-                r.style.display = 'none';
+                row.style.display = 'none';
             }
         });
-        visibleCount.innerText = count + ' stocks';
-        if (count === 0 && rows.length > 0) {
-            noMatchRow.classList.remove('d-none');
-        } else {
-            noMatchRow.classList.add('d-none');
-        }
+
+        visibleCountSpan.textContent = visible;
+        if (window.reinitLucide) window.reinitLucide();
     }
-
-    searchInput.addEventListener('input', filterRows);
-    gradeFilter.addEventListener('change', filterRows);
-    setupFilter.addEventListener('change', filterRows);
-    validityFilter.addEventListener('change', filterRows);
-    freshnessFilter.addEventListener('change', filterRows);
-
-    document.getElementById('btnRunScannerPage').addEventListener('click', async () => {
-        try {
-            await fetch('/api/run-scanner', { method: 'POST' });
-            window.location.href = '/';
-        } catch(e) { console.error(e); }
-    });
 </script>
 {% endblock %}
-

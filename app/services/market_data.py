@@ -2,6 +2,9 @@ import time
 import os
 import logging
 import pytz
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import yfinance as yf
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -17,116 +20,86 @@ logging.basicConfig(
 logger = logging.getLogger("market_data")
 TZ_JAKARTA = pytz.timezone("Asia/Jakarta")
 
-def update_market_data(db: Session, progress_callback=None, chunk_size: int = 50):
+
+def _make_yf_session():
+    """Create a requests session with browser-like headers and retry logic."""
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+    })
+    return session
+
+
+def update_market_data(db: Session, progress_callback=None):
     """
-    Fetches latest daily market data for all active symbols in parallel batches
-    using yfinance multithreading, significantly speeding up synchronization.
+    Fetches latest daily market data for all active symbols using individual
+    ticker fetches with browser user-agent and retry logic to avoid 429 errors.
     """
     symbols = repositories.get_active_symbols(db)
     if not symbols:
         return {"total": 0, "success": 0, "errors": 0}
 
-    sym_map = {s.symbol: s.id for s in symbols}
-    tickers = list(sym_map.keys())
-    total = len(tickers)
+    total = len(symbols)
     success = 0
     errors = 0
 
-    chunks = [tickers[i:i + chunk_size] for i in range(0, total, chunk_size)]
-    total_chunks = len(chunks)
+    logger.info(f"Starting individual market data update for {total} symbols...")
+    print(f"Starting individual market data update for {total} symbols...")
 
-    logger.info(f"Starting batch market data update for {total} symbols ({total_chunks} chunks)...")
-    print(f"Starting batch market data update for {total} symbols ({total_chunks} chunks)...")
+    for idx, sym in enumerate(symbols, 1):
+        if progress_callback:
+            progress_callback(idx, total)
 
-    processed = 0
-    for chunk_idx, chunk in enumerate(chunks, 1):
-        try:
-            if progress_callback:
-                pct = int((processed / total) * 100)
-                progress_callback(processed, total, f"Batch {chunk_idx}/{total_chunks} ({pct}%)", "Downloading")
+        for attempt in range(3):
+            try:
+                ticker = yf.Ticker(sym.symbol)
+                df = ticker.history(period='1y', interval='1d', auto_adjust=False)
 
-            # Batch download with internal multithreading
-            data = yf.download(
-                chunk,
-                period="1y",
-                interval="1d",
-                group_by="ticker",
-                threads=True,
-                progress=False,
-                auto_adjust=False
-            )
-
-            if data is None or not isinstance(data, pd.DataFrame) or data.empty:
-                logger.warning(f"Batch {chunk_idx} returned empty, trying individual tickers...")
-                for ticker in chunk:
-                    processed += 1
-                    s_id = sym_map.get(ticker)
-                    if not s_id:
-                        continue
-                    try:
-                        t = yf.Ticker(ticker)
-                        sub_df = t.history(period="1y", interval="1d")
-                        if sub_df is not None and not sub_df.empty:
-                            sub_df = sub_df.dropna(how='all')
-                            if not sub_df.empty:
-                                if sub_df.index.tz is not None:
-                                    sub_df.index = sub_df.index.tz_convert(TZ_JAKARTA)
-                                else:
-                                    sub_df.index = sub_df.index.tz_localize("UTC").tz_convert(TZ_JAKARTA)
-                                repositories.save_daily_prices(db, s_id, sub_df)
-                                success += 1
-                            else:
-                                errors += 1
+                if df is not None and not df.empty:
+                    df = df.dropna(how='all')
+                    if not df.empty:
+                        # Ensure timezone conversion to Asia/Jakarta
+                        if df.index.tz is not None:
+                            df.index = df.index.tz_convert(TZ_JAKARTA)
                         else:
-                            errors += 1
-                    except Exception as ind_err:
+                            df.index = df.index.tz_localize("UTC").tz_convert(TZ_JAKARTA)
+                        repositories.save_daily_prices(db, sym.id, df)
+                        success += 1
+                        break
+                    else:
                         errors += 1
-                        logger.debug(f"Error fetching {ticker}: {ind_err}")
-                continue
-
-            for ticker in chunk:
-                processed += 1
-                s_id = sym_map.get(ticker)
-                if not s_id:
-                    continue
-
-                try:
-                    if len(chunk) == 1:
-                        sub_df = data.copy()
-                    else:
-                        if hasattr(data.columns, 'levels') and ticker in data.columns.levels[0]:
-                            sub_df = data[ticker].copy()
-                        elif isinstance(data.columns, pd.MultiIndex) and ticker in data.columns:
-                            sub_df = data[ticker].copy()
-                        else:
-                            errors += 1
-                            continue
-
-                    sub_df = sub_df.dropna(how='all')
-                    if sub_df.empty:
-                        continue
-
-                    # Ensure timezone conversion to Asia/Jakarta
-                    if sub_df.index.tz is not None:
-                        sub_df.index = sub_df.index.tz_convert(TZ_JAKARTA)
-                    else:
-                        sub_df.index = sub_df.index.tz_localize("UTC").tz_convert(TZ_JAKARTA)
-
-                    repositories.save_daily_prices(db, s_id, sub_df)
-                    success += 1
-                except Exception as row_err:
+                        break
+                else:
                     errors += 1
-                    logger.debug(f"Error processing {ticker} from batch: {row_err}")
+                    break
 
-            logger.info(f"Chunk {chunk_idx}/{total_chunks} completed. Total saved: {success}/{processed}")
+            except Exception as e:
+                if attempt == 2:
+                    logger.error(f"Failed {sym.symbol} after 3 attempts: {e}")
+                    errors += 1
+                else:
+                    wait = 2 ** attempt  # 1s, 2s
+                    logger.debug(f"Retry {attempt + 1} for {sym.symbol} after {wait}s: {e}")
+                    time.sleep(wait)
 
-        except Exception as e:
-            errors += len(chunk)
-            logger.error(f"Error downloading chunk {chunk_idx}: {e}")
-            print(f"Error downloading chunk {chunk_idx}: {e}")
+        # Polite delay between tickers to avoid rate limiting
+        time.sleep(0.2)
+
+        if idx % 50 == 0:
+            logger.info(f"Progress: {idx}/{total} tickers processed. Success: {success}, Errors: {errors}")
 
     if progress_callback:
-        progress_callback(total, total, "100%", "Complete")
+        progress_callback(total, total)
 
     logger.info(f"Market data update finished. Success: {success}/{total}, Errors: {errors}")
     return {"total": total, "success": success, "errors": errors}
