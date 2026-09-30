@@ -20,11 +20,11 @@ from sqlalchemy.orm import Session
 
 from app.database import repositories
 from app.database.models import PortfolioHolding
-from app.providers.yahoo import YahooFinanceProvider
+from app.providers.tradingview import TradingViewProvider
 
 logger = logging.getLogger("app.portfolio")
 
-_provider = YahooFinanceProvider()
+_provider = TradingViewProvider()
 
 
 # ─── Helpers ───────────────────────────────────────────────

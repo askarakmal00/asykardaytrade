@@ -315,11 +315,10 @@ def backtest_page(
 @app.get("/debug/market-data/{symbol}", response_class=HTMLResponse)
 def debug_market_data(symbol: str, request: Request):
     """Complete market data audit page for a given symbol."""
-    import yfinance as yf
-    from app.providers.yahoo import YahooFinanceProvider
+    from app.providers.tradingview import TradingViewProvider
 
     sym = symbol.upper()
-    provider = YahooFinanceProvider()
+    provider = TradingViewProvider()
     now_wib = datetime.datetime.now(TZ_JAKARTA)
 
     def _build_rows(df: pd.DataFrame, limit: int = 10):

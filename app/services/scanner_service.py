@@ -10,13 +10,13 @@ from app.database import repositories
 from app.indicators import trend, momentum, volume
 from app.scanner import screener, ranking
 from app.strategy.signal_engine import evaluate_signal
-from app.providers.yahoo import YahooFinanceProvider
+from app.providers.tradingview import TradingViewProvider
 from app import config
 
 logger = logging.getLogger("app")
 
 TZ_JAKARTA = pytz.timezone("Asia/Jakarta")
-_provider = YahooFinanceProvider()
+_provider = TradingViewProvider()
 
 
 def _safe(v, default=0.0):

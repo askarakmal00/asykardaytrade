@@ -14,3 +14,5 @@ psycopg[binary]
 apscheduler
 requests
 curl_cffi
+tvdatafeed
+websocket-client
