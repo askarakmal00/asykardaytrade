@@ -424,3 +424,325 @@ def evaluate_signal(
         "signal_generated_str": freshness_info["signal_generated_str"],
         "next_action": next_action
     }
+
+
+def evaluate_signal_from_scanner(scanner_row: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Evaluasi sinyal menggunakan indikator pre-computed dari TradingView Scanner.
+
+    Cocok untuk semua 891 saham IDX tanpa memerlukan data historis OHLCV.
+    Menggunakan: RSI, EMA9, EMA20, EMA50, ATR, volume, avg_vol_30d,
+                 support (Pivot S1), resistance (Pivot R1) dari TradingView.
+
+    Args:
+        scanner_row: dict dari fetch_all_scanner_data() atau fetch_scanner_single()
+            {
+                'open','high','low','close','volume','change_pct','change_abs',
+                'rsi','ema9','ema20','ema50','ma20','ma50','atr',
+                'avg_vol_30d','support','resistance'
+            }
+
+    Returns: dict dengan format SAMA dengan evaluate_signal() — kompatibel penuh.
+    """
+    now_jkt = datetime.datetime.now(TZ_JAKARTA)
+
+    # ── Ambil nilai dari scanner row ─────────────────────────────────────────
+    price      = float(scanner_row.get("close", 0))
+    open_p     = float(scanner_row.get("open",  price))
+    high_p     = float(scanner_row.get("high",  price))
+    low_p      = float(scanner_row.get("low",   price))
+    volume     = float(scanner_row.get("volume", 0))
+
+    rsi        = float(scanner_row.get("rsi",    50.0))
+    ema9       = float(scanner_row.get("ema9",   price))
+    ema20      = float(scanner_row.get("ema20",  price))  # TV EMA20 ≈ EMA21
+    ema50      = float(scanner_row.get("ema50",  price))
+    ma20       = float(scanner_row.get("ma20",   price))
+    ma50       = float(scanner_row.get("ma50",   price))
+    atr        = float(scanner_row.get("atr",    price * 0.02))
+    avg_vol    = float(scanner_row.get("avg_vol_30d", volume if volume > 0 else 1))
+    support    = float(scanner_row.get("support",    price * 0.97))
+    resistance = float(scanner_row.get("resistance", price * 1.03))
+
+    # Guard: harga tidak valid
+    if price <= 0:
+        return {
+            "score": 0, "grade": "NO TRADE", "setup": "NONE",
+            "status": "DATA_UNAVAILABLE", "price": 0,
+            "entry_low": 0, "entry_high": 0, "entry_zone": "-",
+            "stop_loss": 0, "tp1": 0, "tp2": 0, "risk_reward": 0,
+            "rsi": 0, "ema9": 0, "ema21": 0, "volume_ratio": 0,
+            "est_value": 0, "dist_ema9_pct": 0,
+            "support_zone": "-", "resistance_zone": "-",
+            "why_this_stock": [], "why_not_ready": ["Harga tidak valid dari scanner."],
+            "reason": "No valid price data",
+            "primary_reason": "Data harga tidak tersedia dari TradingView Scanner.",
+            "entry_validity": "UNKNOWN", "freshness": "FRESH",
+            "signal_age_minutes": 0,
+            "signal_generated_at": now_jkt.isoformat(),
+            "signal_generated_str": now_jkt.strftime("%d %b %Y %H:%M WIB"),
+            "next_action": "MONITOR"
+        }
+
+    # ── Derived values ───────────────────────────────────────────────────────
+    dist_ema9_pct = ((price - ema9) / ema9 * 100.0) if ema9 > 0 else 0.0
+    vol_ratio     = (volume / avg_vol) if avg_vol > 0 else 1.0
+    est_value     = price * volume
+    # EMA slope proxy: besar selisih EMA9 - EMA20 (positif = trend naik)
+    ema_slope     = ema9 - ema20
+
+    # ── Scoring (sama dengan evaluate_signal) ────────────────────────────────
+    score = 0
+    why_this_stock: List[str] = []
+    why_not_ready: List[str]  = []
+
+    # A. TREND (Max 25)
+    trend_score = 0
+    if price > ema9:
+        trend_score += 8
+        why_this_stock.append("Harga di atas EMA9 — dynamic support terjaga")
+    else:
+        why_not_ready.append(f"Harga di bawah EMA9 ({price:,.0f} vs {ema9:,.0f})")
+
+    if ema9 > ema20:
+        trend_score += 8
+        why_this_stock.append("Alignment bullish (EMA9 > EMA20)")
+    else:
+        why_not_ready.append("EMA9 di bawah EMA20 — trend belum bullish")
+
+    if ema_slope > 0:
+        trend_score += 5
+        why_this_stock.append("EMA20 slope positif — kekuatan trend naik")
+
+    if price > ma20 and ma20 > ma50:
+        trend_score += 4
+        why_this_stock.append("Close > MA20 > MA50 — konteks trend harian bullish")
+
+    score += min(25, trend_score)
+
+    # B. MOMENTUM (Max 20)
+    mom_score = 0
+    if 50.0 <= rsi <= 70.0:
+        mom_score += 10
+        why_this_stock.append(f"RSI di zona momentum optimal ({rsi:.1f})")
+    elif rsi < 50.0:
+        why_not_ready.append(f"RSI lemah ({rsi:.1f} < 50)")
+
+    if 55.0 < rsi <= 72.0:
+        mom_score += 5
+        why_this_stock.append("Akselerasi momentum positif")
+
+    score += min(20, mom_score)
+
+    # C. LIQUIDITY (Max 20)
+    liq_score = 0
+    if est_value >= config.MIN_VALUE:
+        liq_score += 7
+        why_this_stock.append(f"Nilai transaksi Rp{est_value/1e9:.1f}B > Rp10B")
+    else:
+        why_not_ready.append(f"Nilai transaksi Rp{est_value/1e9:.1f}B < Rp10B (likuiditas rendah)")
+
+    if volume >= config.MIN_VOLUME:
+        liq_score += 5
+        why_this_stock.append(f"Volume {volume/1e6:.1f}M lembar > 1.0M threshold")
+
+    if vol_ratio >= config.MIN_VOLUME_RATIO:
+        liq_score += 8
+        why_this_stock.append(f"Volume Ratio {vol_ratio:.2f}x di atas rata-rata 30 hari")
+    elif vol_ratio >= 1.0:
+        liq_score += 4
+
+    score += min(20, liq_score)
+
+    # D. SETUP DETECTION (Max 25) — tanpa historical series, pakai scanner indicators
+    setup_type = "NONE"
+    setup_boost = 0
+    prelim_status = "WATCH"
+
+    trend_bullish = price >= ema9 * 0.985 and ema9 >= ema20 * 0.99
+    near_support   = price <= ema9 * 1.025  # harga dekat EMA9 (< 2.5% di atas)
+    momentum_ok    = 45.0 <= rsi <= 68.0
+    near_resistance = price >= resistance * 0.97
+    vol_surge       = vol_ratio >= 1.4
+
+    # Pullback setup: trend bullish, price dekat EMA9/support
+    if trend_bullish and near_support and momentum_ok:
+        setup_type = "PULLBACK"
+        setup_boost = 15
+        why_this_stock.append("Setup pullback valid — harga mendekati dynamic support EMA9")
+        if momentum_ok:
+            setup_boost += 5
+            why_this_stock.append("Momentum pulih tanpa kondisi overbought")
+        if dist_ema9_pct > 3.0:
+            prelim_status = "WAIT_PULLBACK"
+        else:
+            prelim_status = "READY"
+
+    # Breakout setup: price dekat resistance, volume surge
+    elif near_resistance and vol_surge and price >= ema9:
+        setup_type = "BREAKOUT"
+        setup_boost = 15
+        why_this_stock.append("Setup breakout near resistance dengan volume expansion")
+        if vol_surge:
+            setup_boost += 5
+            why_this_stock.append(f"Volume surge {vol_ratio:.1f}x konfirmasi tekanan beli")
+        prelim_status = "WAIT_BREAKOUT" if not (price >= resistance) else "READY"
+
+    score += min(25, setup_boost)
+
+    # E. RISK / REWARD (Max 10)
+    # Entry zone
+    if setup_type == "PULLBACK":
+        entry_low  = round(min(price, max(ema20, ema9 * 0.995)), 0)
+        entry_high = round(max(price, ema9 * 1.005), 0)
+    elif setup_type == "BREAKOUT":
+        entry_low  = round(price * 0.995, 0)
+        entry_high = round(price * 1.005, 0)
+    else:
+        entry_low  = round(price * 0.99, 0)
+        entry_high = round(price * 1.01, 0)
+
+    if entry_low == entry_high:
+        entry_low  = round(price * 0.995, 0)
+        entry_high = round(price * 1.005, 0)
+
+    # Stop loss: bawah support atau 1.5 ATR dari entry
+    raw_sl   = min(support * 0.99, entry_low - 1.5 * atr)
+    stop_loss = max(round(raw_sl, 0), round(price * 0.93, 0))  # max drawdown 7%
+    if stop_loss >= entry_low:
+        stop_loss = round(entry_low * 0.97, 0)
+
+    risk_amount   = max(1.0, entry_high - stop_loss)
+    tp1           = round(entry_high + risk_amount * 1.5, 0)
+    tp2           = round(max(resistance, entry_high + risk_amount * 2.0), 0)
+    reward_amount = tp1 - entry_high
+    rr            = round(reward_amount / risk_amount, 2) if risk_amount > 0 else 0.0
+
+    if rr >= 2.0:
+        score += 10
+        why_this_stock.append(f"Risk/Reward menarik 1:{rr:.2f} (≥ 2.0)")
+    elif rr >= config.MIN_RISK_REWARD:
+        score += 5
+        why_this_stock.append(f"Risk/Reward acceptable 1:{rr:.2f} (≥ 1.5)")
+    else:
+        why_not_ready.append(f"Risk/Reward 1:{rr:.2f} di bawah minimum 1:1.5")
+
+    # F. PENALTIES
+    if rsi > 75.0:
+        score -= 10
+        why_not_ready.append(f"Overbought extreme (RSI {rsi:.1f} > 75)")
+    elif rsi > 70.0:
+        why_not_ready.append(f"Caution overbought (RSI {rsi:.1f} > 70)")
+
+    if dist_ema9_pct > 5.0:
+        score -= 20
+        why_not_ready.append(f"Terlalu jauh dari EMA9 (+{dist_ema9_pct:.1f}% > 5.0%)")
+    elif dist_ema9_pct > 3.0:
+        score -= 10
+        why_not_ready.append(f"Extended dari EMA9 (+{dist_ema9_pct:.1f}% > 3.0%)")
+
+    if est_value < 5_000_000_000 or volume < 500_000:
+        score -= 20
+        why_not_ready.append("Penalti likuiditas rendah")
+
+    # Price filter
+    if price < config.MIN_PRICE:
+        score -= 30
+        why_not_ready.append(f"Harga Rp{price:,.0f} di bawah minimum Rp{config.MIN_PRICE:,}")
+
+    final_score = max(0, min(100, score))
+
+    # Classification
+    if final_score >= 85:
+        grade = "A+"
+    elif final_score >= 75:
+        grade = "A"
+    elif final_score >= 65:
+        grade = "WATCH"
+    elif final_score >= 50:
+        grade = "LOW QUALITY"
+    else:
+        grade = "NO TRADE"
+
+    # Status
+    if dist_ema9_pct > 5.0:
+        status = "WAIT_PULLBACK"
+    elif rr < config.MIN_RISK_REWARD and setup_type != "NONE":
+        status = "NO_TRADE"
+    elif prelim_status == "READY" and final_score >= config.MIN_SIGNAL_SCORE:
+        status = "READY"
+    elif prelim_status in ("WAIT_PULLBACK", "WAIT_BREAKOUT"):
+        status = prelim_status
+    elif final_score >= 65:
+        status = "WATCH"
+    else:
+        status = "NO_TRADE"
+
+    # Entry validity
+    entry_val = determine_entry_validity(
+        price=price, entry_low=entry_low, entry_high=entry_high,
+        dist_ema9_pct=dist_ema9_pct, status=status, stop_loss=stop_loss
+    )
+
+    # Freshness
+    freshness_info = determine_freshness(now_jkt)
+
+    # Next action
+    next_action = determine_next_action(status, entry_val, freshness_info["freshness"])
+
+    # Primary reason
+    if status == "READY":
+        if setup_type == "PULLBACK":
+            primary_reason = f"Setup pullback bullish ke EMA9 dengan R:R 1:{rr:.1f} yang menarik."
+        elif setup_type == "BREAKOUT":
+            primary_reason = f"Breakout dengan {vol_ratio:.1f}x volume surge dekat resistance."
+        else:
+            primary_reason = f"Trend dan momentum solid, R:R 1:{rr:.1f}."
+    elif status == "WAIT_PULLBACK":
+        primary_reason = f"Setup valid, tapi harga terlalu jauh (+{dist_ema9_pct:.1f}% dari EMA9) — tunggu pullback."
+    elif status == "WAIT_BREAKOUT":
+        primary_reason = "Harga menguji resistance — tunggu konfirmasi breakout dengan volume."
+    elif status == "WATCH":
+        primary_reason = "Setup berkembang, belum memenuhi semua kriteria entry."
+    else:
+        primary_reason = why_not_ready[0] if why_not_ready else "Kriteria entry belum terpenuhi."
+
+    entry_zone_str = f"{int(entry_low)} – {int(entry_high)}" if entry_low >= 10 else f"{entry_low:.2f} – {entry_high:.2f}"
+    support_zone   = f"{int(support * 0.99)} – {int(support * 1.01)}" if support >= 10 else f"{support:.2f}"
+    resistance_zone = f"{int(resistance * 0.99)} – {int(resistance * 1.01)}" if resistance >= 10 else f"{resistance:.2f}"
+
+    return {
+        "score":      final_score,
+        "grade":      grade,
+        "setup":      setup_type,
+        "status":     status,
+        "price":      price,
+        "entry_low":  entry_low,
+        "entry_high": entry_high,
+        "entry_zone": entry_zone_str,
+        "stop_loss":  stop_loss,
+        "tp1":        tp1,
+        "tp2":        tp2,
+        "risk_reward":    rr,
+        "rsi":            rsi,
+        "ema9":           ema9,
+        "ema21":          ema20,          # alias EMA20 → ema21 field
+        "volume_ratio":   round(vol_ratio, 3),
+        "est_value":      est_value,
+        "dist_ema9_pct":  round(dist_ema9_pct, 2),
+        "support_zone":   support_zone,
+        "resistance_zone": resistance_zone,
+        "why_this_stock": why_this_stock,
+        "why_not_ready":  why_not_ready,
+        "reason":         "\n".join(
+            [f"✓ {x}" for x in why_this_stock] +
+            [f"✗ {x}" for x in why_not_ready]
+        ),
+        "primary_reason": primary_reason,
+        "entry_validity": entry_val,
+        "freshness":      freshness_info["freshness"],
+        "signal_age_minutes":  freshness_info["signal_age_minutes"],
+        "signal_generated_at": freshness_info["signal_generated_at"],
+        "signal_generated_str": freshness_info["signal_generated_str"],
+        "next_action":    next_action,
+    }
