@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% set active_page = "home" %}
+
+{% block content %}
+<!-- SECTION 1: MARKET STATUS & CONTROLS -->
+<div class="card p-3 mb-4">
+    <div class="row align-items-center g-3">
+        <div class="col-lg-7">
+            <div class="d-flex align-items-center gap-3">
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="text-uppercase small fw-bold text-secondary">MARKET STATUS:</span>
+                        {% if market_info.is_open %}
+                            <span class="badge bg-success px-2 py-1"><i class="bi bi-circle-fill fs-8 me-1"></i>{{ market_info.status_text }}</span>
+                        {% else %}
+                            <span class="badge bg-danger px-2 py-1"><i class="bi bi-moon-stars-fill me-1"></i>{{ market_info.status_text }}</span>
+                        {% endif %}
+                        <span class="text-white small fw-semibold mono">{{ market_info.current_time_wib }}</span>
+                    </div>
+                    <div class="text-muted small">
+                        {{ market_info.status_desc }}
+                        {% if stats.scan_time %}
+                            • <span class="text-secondary">Scan generated: <strong class="text-white mono">{{ stats.scan_time[:16] }}</strong></span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 d-flex justify-content-lg-end gap-2">
+            <div id="statusSpinner" class="spinner-border spinner-border-sm text-primary align-self-center me-2 d-none" role="status"></div>
+            <button id="btnUpdateData" class="btn btn-glow-primary px-3 py-2 fw-semibold d-flex align-items-center gap-2">
+                <i class="bi bi-cloud-download"></i>
+                <span>UPDATE MARKET DATA</span>
+            </button>
+            <button id="btnRunScanner" class="btn btn-glow-success px-3 py-2 fw-semibold d-flex align-items-center gap-2">
+                <i class="bi bi-play-circle"></i>
+                <span>RUN SCREENER</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 2: WHAT SHOULD I DO? -->
+<div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="fw-bold mb-1 text-white"><i class="bi bi-compass text-primary me-2"></i>WHAT SHOULD I DO TODAY?</h4>
+            <p class="text-muted small mb-0">Prioritas tindakan trader dikelompokkan langsung berdasarkan status eksekusi terkini.</p>
+        </div>
+        <div class="small text-muted">
+            Single Source of Truth: <span class="badge bg-dark border border-secondary text-info">READY Score &ge; {{ min_signal_score }}</span>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- 1. READY TO CONSIDER -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card h-100 p-3 border-success border-opacity-50" style="background: linear-gradient(180deg, rgba(16,185,129,0.06), #151b26 40%);">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge badge-ready text-uppercase fw-bold"><i class="bi bi-check-circle-fill me-1"></i>1. READY TO CONSIDER</span>
+                    <span class="fs-5 fw-bold text-success mono">{{ ready_candidates|length }}</span>
+                </div>
+                <div class="text-muted small mb-3">Setup siap eksekusi di Entry Zone dengan Risk/Reward valid.</div>
+                
+                {% if ready_candidates %}
+                    <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 250px;">
+                        {% for item in ready_candidates[:4] %}
+                        <div class="p-2 rounded bg-dark border border-secondary">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-white fs-6">{{ item.symbol }}</span>
+                                <span class="badge bg-success fw-bold">{{ item.grade }} · {{ item.score }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span>{{ item.setup }}</span>
+                                <span class="mono text-white">Entry: {{ item.entry_zone }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-secondary">
+                                <span class="badge badge-valid py-0" style="font-size:0.65rem;">{{ item.next_action }}</span>
+                                <a href="/stock/{{ item.symbol }}" class="btn btn-xs btn-outline-success py-0 px-2 small" style="font-size:0.75rem;">View Setup &rarr;</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-3 text-center bg-dark rounded border border-secondary text-muted small my-auto">
+                        <i class="bi bi-shield-check fs-4 text-success d-block mb-1"></i>
+                        Tidak ada sinyal READY saat ini.<br>Disiplin: jangan memaksakan entry.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 2. WAIT FOR SETUP -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card h-100 p-3 border-warning border-opacity-50" style="background: linear-gradient(180deg, rgba(245,158,11,0.06), #151b26 40%);">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge badge-pullback text-uppercase fw-bold"><i class="bi bi-hourglass-split me-1"></i>2. WAIT FOR SETUP</span>
+                    <span class="fs-5 fw-bold text-warning mono">{{ wait_candidates|length }}</span>
+                </div>
+                <div class="text-muted small mb-3">Setup bagus, tapi harga belum masuk Entry Zone optimal.</div>
+                
+                {% if wait_candidates %}
+                    <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 250px;">
+                        {% for item in wait_candidates[:4] %}
+                        <div class="p-2 rounded bg-dark border border-secondary">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-white fs-6">{{ item.symbol }}</span>
+                                <span class="badge bg-warning text-dark fw-bold">{{ item.grade }} · {{ item.score }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span>{{ item.status }}</span>
+                                <span class="mono text-warning">Wait Zone: {{ item.entry_zone }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-secondary">
+                                <span class="badge badge-extended py-0" style="font-size:0.65rem;">{{ item.next_action }}</span>
+                                <a href="/stock/{{ item.symbol }}" class="btn btn-xs btn-outline-warning py-0 px-2 small" style="font-size:0.75rem;">Monitor &rarr;</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-3 text-center bg-dark rounded border border-secondary text-muted small my-auto">
+                        Belum ada kandidat waiting setup.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 3. WATCHLIST -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card h-100 p-3 border-info border-opacity-50">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge badge-watch text-uppercase fw-bold"><i class="bi bi-eye-fill me-1"></i>3. WATCHLIST</span>
+                    <span class="fs-5 fw-bold text-info mono">{{ watch_candidates|length }}</span>
+                </div>
+                <div class="text-muted small mb-3">Tren positif, sedang mengumpulkan momentum konfirmasi.</div>
+                
+                {% if watch_candidates %}
+                    <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 250px;">
+                        {% for item in watch_candidates[:4] %}
+                        <div class="p-2 rounded bg-dark border border-secondary">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-white fs-6">{{ item.symbol }}</span>
+                                <span class="badge bg-secondary fw-bold">{{ item.grade }} · {{ item.score }}</span>
+                            </div>
+                            <div class="text-muted small mt-1 text-truncate">{{ item.primary_reason }}</div>
+                            <div class="d-flex justify-content-end mt-2 pt-1 border-top border-secondary">
+                                <a href="/stock/{{ item.symbol }}" class="btn btn-xs btn-outline-info py-0 px-2 small" style="font-size:0.75rem;">Inspect &rarr;</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-3 text-center bg-dark rounded border border-secondary text-muted small my-auto">
+                        Watchlist kosong.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 4. NO TRADE -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card h-100 p-3 border-danger border-opacity-30">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge badge-notrade text-uppercase fw-bold"><i class="bi bi-x-octagon-fill me-1"></i>4. NO TRADE</span>
+                    <span class="fs-5 fw-bold text-danger mono">{{ no_trade_candidates|length }}</span>
+                </div>
+                <div class="text-muted small mb-3">Tidak memenuhi syarat teknikal, RR jelek, atau downtrend.</div>
+                <div class="p-3 text-center bg-dark rounded border border-secondary text-muted small my-auto">
+                    <i class="bi bi-shield-x fs-4 text-danger d-block mb-1"></i>
+                    {{ no_trade_candidates|length }} saham tereliminasi.<br>
+                    <span class="text-secondary">Do not trade outside disciplined setup.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 3: TOP ACTIONABLE SIGNALS TABLE -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="fw-bold mb-0 text-white"><i class="bi bi-lightning-charge-fill text-warning me-2"></i>TOP ACTIONABLE SIGNALS</h4>
+        <p class="text-muted small mb-0">Disortir berdasarkan prioritas: <strong>READY &rarr; ENTRY VALID &rarr; FRESH &rarr; SCORE</strong>.</p>
+    </div>
+    <a href="/screener" class="btn btn-sm btn-outline-secondary px-3">
+        VIEW ALL UNIVERSE (SCREENER) <i class="bi bi-arrow-right ms-1"></i>
+    </a>
+</div>
+
+<div class="card overflow-hidden mb-4">
+    <div class="table-responsive">
+        <table class="table table-dark table-hover align-middle mb-0">
+            <thead>
+                <tr class="text-secondary small text-uppercase border-bottom border-secondary">
+                    <th class="ps-3 py-3">Rank</th>
+                    <th>Symbol</th>
+                    <th>Price (Close)</th>
+                    <th data-bs-toggle="tooltip" title="Signal Score: Quality score from the technical engine (0-100). NOT a probability of profit.">
+                        Score <i class="bi bi-info-circle"></i>
+                    </th>
+                    <th data-bs-toggle="tooltip" title="Grade: Setup quality tier (A+ >=85, A >=75, WATCH >=65). Does not automatically mean BUY.">
+                        Grade <i class="bi bi-info-circle"></i>
+                    </th>
+                    <th data-bs-toggle="tooltip" title="Setup: Structural pattern detected (PULLBACK or BREAKOUT).">
+                        Setup <i class="bi bi-info-circle"></i>
+                    </th>
+                    <th data-bs-toggle="tooltip" title="Status: Action state (READY, WAIT_PULLBACK, WAIT_BREAKOUT, WATCH, NO_TRADE).">
+                        Status <i class="bi bi-info-circle"></i>
+                    </th>
+                    <th data-bs-toggle="tooltip" title="Entry Zone: Recommended execution price window.">
+                        Entry Zone <i class="bi bi-info-circle"></i>
+                    </th>
+                    <th>Stop Loss</th>
+                    <th>TP1 / TP2</th>
+                    <th data-bs-toggle="tooltip" title="Risk/Reward Ratio: Expected reward per unit of risk (Min: 1:1.5).">
+                        R:R <i class="bi bi-info-circle"></i>
+                    </th>
+                    <th data-bs-toggle="tooltip" title="Entry Validity: VALID (in zone), MISSED (rallied past zone), EXTENDED (too far from EMA9).">
+                        Validity <i class="bi bi-info-circle"></i>
+                    </th>
+                    <th data-bs-toggle="tooltip" title="Freshness: FRESH (<60m), AGING (60-180m), STALE (>180m).">
+                        Freshness <i class="bi bi-info-circle"></i>
+                    </th>
+                    <th>Next Action</th>
+                    <th class="pe-3 text-end">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if scan_results %}
+                    {% for item in scan_results %}
+                    <tr>
+                        <td class="ps-3 fw-bold text-warning">#{{ item.rank|default(loop.index) }}</td>
+                        <td>
+                            <div class="fw-bold text-white fs-6">{{ item.symbol }}</div>
+                            <div class="small text-muted text-truncate" style="max-width: 130px;">{{ item.name or '' }}</div>
+                        </td>
+                        <td class="mono fw-bold text-muted">Rp {{ "{:,.0f}".format(item.daily_close|default(item.price)) }}</td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="mono fw-bold text-white fs-6">{{ item.score }}</span>
+                                <div class="progress flex-grow-1" style="height: 6px; width: 35px; background-color: #232d3f;">
+                                    <div class="progress-bar {% if item.score >= 85 %}bg-success{% elif item.score >= 75 %}bg-primary{% else %}bg-warning{% endif %}" 
+                                         style="width: {{ item.score }}%"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if item.grade == 'A+' %}
+                                <span class="badge bg-success fw-bold">A+</span>
+                            {% elif item.grade == 'A' %}
+                                <span class="badge bg-primary fw-bold">A</span>
+                            {% elif item.grade == 'WATCH' %}
+                                <span class="badge bg-warning text-dark fw-bold">WATCH</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ item.grade }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.setup == 'PULLBACK' %}
+                                <span class="badge badge-pullback">PULLBACK</span>
+                            {% elif item.setup == 'BREAKOUT' %}
+                                <span class="badge badge-breakout">BREAKOUT</span>
+                            {% else %}
+                                <span class="badge bg-secondary">NONE</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.status == 'READY' %}
+                                <span class="badge badge-ready"><i class="bi bi-check-circle me-1"></i>READY</span>
+                            {% elif item.status == 'WAIT_PULLBACK' %}
+                                <span class="badge badge-pullback"><i class="bi bi-hourglass-split me-1"></i>WAIT PB</span>
+                            {% elif item.status == 'WAIT_BREAKOUT' %}
+                                <span class="badge badge-breakout"><i class="bi bi-hourglass-split me-1"></i>WAIT BO</span>
+                            {% elif item.status == 'WATCH' %}
+                                <span class="badge badge-watch">WATCH</span>
+                            {% else %}
+                                <span class="badge badge-notrade">NO TRADE</span>
+                            {% endif %}
+                        </td>
+                        <td class="mono small text-white fw-semibold">{{ item.entry_zone }}</td>
+                        <td class="mono text-danger small">Rp {{ "{:,.0f}".format(item.stop_loss) }}</td>
+                        <td class="mono text-success small">
+                            {{ "{:,.0f}".format(item.tp1) }} / {{ "{:,.0f}".format(item.tp2) }}
+                        </td>
+                        <td class="mono fw-semibold {% if item.risk_reward >= 2.0 %}text-success{% elif item.risk_reward >= 1.5 %}text-info{% else %}text-muted{% endif %}">
+                            1:{{ "%.1f"|format(item.risk_reward) }}
+                        </td>
+                        <td>
+                            {% if item.entry_validity == 'VALID' %}
+                                <span class="badge badge-valid"><i class="bi bi-check2 me-1"></i>VALID</span>
+                            {% elif item.entry_validity == 'MISSED' %}
+                                <span class="badge badge-missed"><i class="bi bi-exclamation-octagon me-1"></i>MISSED</span>
+                            {% elif item.entry_validity == 'EXTENDED' %}
+                                <span class="badge badge-extended"><i class="bi bi-arrow-up-right me-1"></i>EXTENDED</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ item.entry_validity|default('VALID') }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.freshness == 'FRESH' %}
+                                <span class="badge badge-fresh"><i class="bi bi-dot"></i>FRESH</span>
+                            {% elif item.freshness == 'AGING' %}
+                                <span class="badge badge-aging"><i class="bi bi-dot"></i>AGING</span>
+                            {% else %}
+                                <span class="badge badge-stale"><i class="bi bi-dot"></i>STALE</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-dark border border-secondary text-white fw-semibold small" style="font-size:0.72rem;">
+                                {{ item.next_action|default('MONITOR') }}
+                            </span>
+                        </td>
+                        <td class="pe-3 text-end">
+                            <a href="/stock/{{ item.symbol }}" class="btn btn-sm btn-outline-primary px-3">
+                                Plan <i class="bi bi-arrow-right"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="15" class="text-center py-5">
+                            <div class="my-3">
+                                <i class="bi bi-shield-check fs-1 text-success d-block mb-3"></i>
+                                <h5 class="text-white fw-bold mb-1">Tidak Ada Sinyal READY Saat Ini</h5>
+                                <p class="text-muted small mx-auto mb-3" style="max-width: 520px;">
+                                    Sistem memfilter ketat (Score &ge; {{ min_signal_score }}, Setup Valid, dan Risk/Reward &ge; 1.5). Bila pasar sedang sepi atau harga belum dalam zona entry ideal, tindakan terbaik adalah menunggu daripada mengejar harga.
+                                </p>
+                                <div class="d-flex justify-content-center gap-2">
+                                    <a href="/screener" class="btn btn-sm btn-outline-info px-3">
+                                        <i class="bi bi-filter-square me-1"></i> Periksa Screener Universe
+                                    </a>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function postAction(url) {
+        try {
+            document.getElementById('statusSpinner').classList.remove('d-none');
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) {
+                pollStatus();
+            }
+        } catch (e) {
+            console.error(e);
+            document.getElementById('statusSpinner').classList.add('d-none');
+        }
+    }
+
+    document.getElementById('btnUpdateData').addEventListener('click', () => {
+        postAction('/api/update-data');
+    });
+
+    document.getElementById('btnRunScanner').addEventListener('click', () => {
+        postAction('/api/run-scanner');
+    });
+
+    async function pollStatus() {
+        try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            
+            if (data.status !== 'idle' && data.status !== 'error') {
+                document.getElementById('statusSpinner').classList.remove('d-none');
+                setTimeout(pollStatus, 1500);
+            } else {
+                document.getElementById('statusSpinner').classList.add('d-none');
+                if (data.status === 'idle') {
+                    setTimeout(() => window.location.reload(), 800);
+                }
+            }
+        } catch (e) {
+            console.error(e);
+            document.getElementById('statusSpinner').classList.add('d-none');
+        }
+    }
+    
+    // Initial check
+    const currentStatus = "{{ scan_status.status }}";
+    if (currentStatus !== 'idle' && currentStatus !== 'error') {
+        pollStatus();
+    }
+</script>
+{% endblock %}
+

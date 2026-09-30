@@ -1,0 +1,745 @@
+{% extends "base.html" %}
+{% set active_page = "screener" %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="/screener" class="text-secondary small text-decoration-none"><i class="bi bi-chevron-left"></i> Back to Screener Universe</a>
+</div>
+
+<!-- Stock Header Banner -->
+<div class="card p-4 mb-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+        <div>
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                <h2 class="fw-bold text-white mb-0 mono me-2">{{ stock.symbol }}</h2>
+                
+                {% if stock.grade == 'A+' %}
+                    <span class="badge bg-success fs-6 fw-bold" data-bs-toggle="tooltip" title="Setup Quality Tier A+ (Score >= 85)">GRADE A+</span>
+                {% elif stock.grade == 'A' %}
+                    <span class="badge bg-primary fs-6 fw-bold" data-bs-toggle="tooltip" title="Setup Quality Tier A (Score >= 75)">GRADE A</span>
+                {% elif stock.grade == 'WATCH' %}
+                    <span class="badge bg-warning text-dark fs-6 fw-bold" data-bs-toggle="tooltip" title="Setup Quality Tier WATCH (Score >= 65)">GRADE WATCH</span>
+                {% elif stock.grade == 'LOW QUALITY' %}
+                    <span class="badge bg-secondary fs-6" data-bs-toggle="tooltip" title="Low Quality Setup">LOW QUALITY</span>
+                {% else %}
+                    <span class="badge bg-secondary fs-6">NO TRADE</span>
+                {% endif %}
+
+                {% if stock.setup == 'PULLBACK' %}
+                    <span class="badge badge-pullback fs-6"><i class="bi bi-arrow-down-right me-1"></i>PULLBACK</span>
+                {% elif stock.setup == 'BREAKOUT' %}
+                    <span class="badge badge-breakout fs-6"><i class="bi bi-arrow-up-right me-1"></i>BREAKOUT</span>
+                {% endif %}
+
+                {% if stock.status == 'READY' %}
+                    <span class="badge badge-ready fs-6"><i class="bi bi-check-circle-fill me-1"></i>READY</span>
+                {% elif stock.status == 'WAIT_PULLBACK' %}
+                    <span class="badge badge-pullback fs-6"><i class="bi bi-hourglass-split me-1"></i>WAIT PULLBACK</span>
+                {% elif stock.status == 'WAIT_BREAKOUT' %}
+                    <span class="badge badge-breakout fs-6"><i class="bi bi-hourglass-split me-1"></i>WAIT BREAKOUT</span>
+                {% elif stock.status == 'WATCH' %}
+                    <span class="badge badge-watch fs-6"><i class="bi bi-eye me-1"></i>WATCH</span>
+                {% else %}
+                    <span class="badge badge-notrade fs-6"><i class="bi bi-x-octagon me-1"></i>NO TRADE</span>
+                {% endif %}
+
+                <!-- Freshness Badge -->
+                {% if stock.freshness == 'FRESH' %}
+                    <span class="badge badge-fresh fs-6" data-bs-toggle="tooltip" title="Signal generated within last 60 minutes">
+                        <i class="bi bi-circle-fill text-success fs-8 me-1"></i>FRESH
+                    </span>
+                {% elif stock.freshness == 'AGING' %}
+                    <span class="badge badge-aging fs-6" data-bs-toggle="tooltip" title="Signal generated 60-180 minutes ago">
+                        <i class="bi bi-circle-fill text-warning fs-8 me-1"></i>AGING
+                    </span>
+                {% else %}
+                    <span class="badge badge-stale fs-6" data-bs-toggle="tooltip" title="Signal older than 180 minutes. Re-check data.">
+                        <i class="bi bi-circle-fill text-secondary fs-8 me-1"></i>STALE
+                    </span>
+                {% endif %}
+            </div>
+            <div class="text-muted mt-2">
+                {{ stock.name }} {% if stock.sector %}• <span class="text-info">{{ stock.sector }}</span>{% endif %}
+                • <span class="text-secondary small">Generated: {{ stock.signal_generated_str }}</span>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <!-- BOX 1: Live Quote -->
+            <div class="text-end">
+                <div class="text-secondary small text-uppercase">Harga Terkini
+                    <span class="badge bg-secondary ms-1" style="font-size:0.58rem; vertical-align:middle;">~15m delay</span>
+                </div>
+                <div class="fs-3 fw-bold text-white mono">
+                    Rp {{ "{:,.0f}".format(stock.current_price) }}
+                    {% if stock.change_pct is defined %}
+                        <span class="fs-6 {% if stock.change_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {{ "%+.2f"|format(stock.change_pct) }}%
+                        </span>
+                    {% endif %}
+                </div>
+                <div class="text-muted" style="font-size:0.72rem;">
+                    Daily Close (DB): Rp {{ "{:,.0f}".format(stock.daily_close) }}
+                </div>
+            </div>
+            <!-- BOX 2: Score -->
+            <div class="text-end border-start border-secondary ps-4">
+                <div class="text-secondary small text-uppercase" data-bs-toggle="tooltip" title="Quality score based on technical rules (0-100). NOT a probability of profit.">
+                    Signal Score <i class="bi bi-info-circle"></i>
+                </div>
+                <div class="fs-3 fw-bold mono {% if stock.score >= 85 %}text-success{% elif stock.score >= 75 %}text-primary{% else %}text-warning{% endif %}">
+                    {{ stock.score }}<span class="fs-6 text-muted">/100</span>
+                </div>
+                <div class="text-muted" style="font-size:0.7rem;">Quality Tier</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 1: WHAT IS HAPPENING? & NEXT ACTION -->
+<div class="row g-3 mb-4">
+    <!-- Card: WHAT IS HAPPENING? -->
+    <div class="col-lg-6">
+        <div class="card p-3 h-100 border-primary border-opacity-30">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-info-circle-fill text-primary fs-5"></i>
+                <h5 class="fw-bold text-white mb-0">WHAT IS HAPPENING?</h5>
+            </div>
+            <p class="text-light mb-2">
+                <strong>{{ stock.symbol }}</strong> sedang membentuk setup 
+                <span class="fw-bold {% if stock.setup == 'PULLBACK' %}text-warning{% elif stock.setup == 'BREAKOUT' %}text-primary{% else %}text-secondary{% endif %}">
+                    {{ stock.setup }}
+                </span>.
+            </p>
+            <p class="text-muted small mb-2">
+                {{ stock.primary_reason }}
+            </p>
+            <div class="mt-auto pt-2 border-top border-secondary text-secondary small">
+                <i class="bi bi-clock me-1"></i> Data Signal: <span class="text-white mono">{{ stock.signal_generated_str }}</span> ({{ stock.freshness }})
+            </div>
+        </div>
+    </div>
+
+    <!-- Card: NEXT ACTION & ENTRY VALIDITY -->
+    <div class="col-lg-6">
+        <div class="card p-3 h-100 
+            {% if stock.entry_validity == 'VALID' and stock.status == 'READY' %}
+                border-success border-opacity-50
+            {% elif stock.entry_validity == 'MISSED' %}
+                border-danger border-opacity-50
+            {% elif stock.entry_validity == 'EXTENDED' %}
+                border-warning border-opacity-50
+            {% else %}
+                border-secondary
+            {% endif %}">
+            
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-signpost-2-fill 
+                        {% if stock.entry_validity == 'VALID' and stock.status == 'READY' %}text-success
+                        {% elif stock.entry_validity == 'MISSED' %}text-danger
+                        {% else %}text-warning{% endif %} fs-5"></i>
+                    <h5 class="fw-bold text-white mb-0">NEXT ACTION</h5>
+                </div>
+                <div>
+                    {% if stock.entry_validity == 'VALID' %}
+                        <span class="badge badge-valid">ENTRY VALID</span>
+                    {% elif stock.entry_validity == 'MISSED' %}
+                        <span class="badge badge-missed">ENTRY MISSED</span>
+                    {% elif stock.entry_validity == 'EXTENDED' %}
+                        <span class="badge badge-extended">PRICE EXTENDED</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ stock.entry_validity }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Dynamic Action Instruction -->
+            {% if stock.entry_validity == 'MISSED' %}
+                <div class="alert alert-danger py-2 mb-2">
+                    <div class="fw-bold"><i class="bi bi-x-octagon-fill me-1"></i>DO NOT CHASE — ENTRY MISSED</div>
+                    <div class="small mt-1">
+                        Harga live (Rp {{ "{:,.0f}".format(stock.current_price) }}) telah menembus batas atas Entry Zone (Rp {{ "{:,.0f}".format(stock.entry_high) }}). Mengejar harga saat ini memiliki risiko tinggi. Tunggu pullback baru atau setup berikutnya.
+                    </div>
+                </div>
+            {% elif stock.entry_validity == 'EXTENDED' %}
+                <div class="alert alert-warning py-2 mb-2">
+                    <div class="fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i>WAIT RE-ENTRY — EXTENDED FROM EMA9</div>
+                    <div class="small mt-1">
+                        Harga bergerak +{{ "%.1f"|format(stock.dist_ema9_pct) }}% dari EMA9. Risiko retrace tinggi. Tunggu koreksi mendekati area dinamis EMA9.
+                    </div>
+                </div>
+            {% elif stock.status == 'READY' and stock.entry_validity == 'VALID' %}
+                <div class="alert alert-success py-2 mb-2">
+                    <div class="fw-bold"><i class="bi bi-check-circle-fill me-1"></i>CONSIDER ENTRY — IN ACTIONABLE ZONE</div>
+                    <div class="small mt-1">
+                        Harga saat ini (Rp {{ "{:,.0f}".format(stock.current_price) }}) berada di dalam zona entry yang direncanakan (Rp {{ stock.entry_zone }}). Terapkan manajemen risiko disiplin dengan Stop Loss di Rp {{ "{:,.0f}".format(stock.stop_loss) }}.
+                    </div>
+                </div>
+            {% elif stock.status == 'WAIT_PULLBACK' %}
+                <div class="alert alert-warning py-2 mb-2">
+                    <div class="fw-bold"><i class="bi bi-hourglass-split me-1"></i>WAIT FOR PULLBACK</div>
+                    <div class="small mt-1">
+                        Setup pullback valid, namun harga belum masuk Entry Zone optimal (Rp {{ stock.entry_zone }}). Jangan mengejar; pasang alert dan tunggu harga menyentuh zona beli.
+                    </div>
+                </div>
+            {% elif stock.status == 'WAIT_BREAKOUT' %}
+                <div class="alert alert-primary py-2 mb-2">
+                    <div class="fw-bold"><i class="bi bi-hourglass-split me-1"></i>WAIT FOR BREAKOUT</div>
+                    <div class="small mt-1">
+                        Harga sedang berkonsolidasi menguji resistance. Tunggu konfirmasi candle breakout menembus resistance disertai lonjakan volume.
+                    </div>
+                </div>
+            {% elif stock.status == 'WATCH' %}
+                <div class="alert alert-info py-2 mb-2">
+                    <div class="fw-bold"><i class="bi bi-eye me-1"></i>MONITOR SETUP</div>
+                    <div class="small mt-1">
+                        Saham memiliki tren sehat, namun belum memenuhi seluruh syarat eksekusi. Pantau pergerakan harga pada sesi berikutnya.
+                    </div>
+                </div>
+            {% else %}
+                <div class="alert alert-secondary py-2 mb-2">
+                    <div class="fw-bold"><i class="bi bi-slash-circle me-1"></i>DO NOT ENTER</div>
+                    <div class="small mt-1">
+                        Tidak memenuhi syarat teknikal untuk day trade saat ini.
+                    </div>
+                </div>
+            {% endif %}
+            
+            <div class="text-muted small mt-auto">
+                Next suggested behavior: <strong class="text-white">{{ stock.next_action }}</strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 2: TRADE PLAN (VISUAL HORIZONTAL PROGRESSION) -->
+<div class="card p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold text-white mb-0"><i class="bi bi-crosshair text-danger me-2"></i>TRADE PLAN</h5>
+        <div class="small text-muted">
+            Risk/Reward Ratio: <span class="fw-bold text-success mono fs-6">1 : {{ "%.1f"|format(stock.risk_reward) }}</span>
+        </div>
+    </div>
+
+    <!-- Visual Progression Bar -->
+    <div class="row g-3 text-center">
+        <!-- 1. ENTRY ZONE -->
+        <div class="col-md-3">
+            <div class="p-3 rounded bg-dark border border-secondary h-100">
+                <div class="small text-muted text-uppercase mb-1">1. Entry Zone</div>
+                <div class="fs-5 fw-bold text-white mono">Rp {{ stock.entry_zone }}</div>
+                <div class="small text-secondary mt-1">
+                    Rentang harga eksekusi ideal
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. STOP LOSS -->
+        <div class="col-md-3">
+            <div class="p-3 rounded bg-dark border border-danger border-opacity-50 h-100">
+                <div class="small text-danger text-uppercase mb-1">2. Stop Loss (Risk)</div>
+                <div class="fs-5 fw-bold text-danger mono">Rp {{ "{:,.0f}".format(stock.stop_loss) }}</div>
+                <div class="small text-muted mt-1">
+                    {% if stock.current_price and stock.stop_loss %}
+                        Risk: {{ "%.1f"|format((stock.stop_loss - stock.current_price) / stock.current_price * 100) }}%
+                    {% else %}
+                        Batas toleransi risiko
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. TAKE PROFIT 1 -->
+        <div class="col-md-3">
+            <div class="p-3 rounded bg-dark border border-success border-opacity-50 h-100">
+                <div class="small text-success text-uppercase mb-1">3. Take Profit 1</div>
+                <div class="fs-5 fw-bold text-success mono">Rp {{ "{:,.0f}".format(stock.tp1) }}</div>
+                <div class="small text-muted mt-1">
+                    Target 1 (+1.5R)
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. TAKE PROFIT 2 -->
+        <div class="col-md-3">
+            <div class="p-3 rounded bg-dark border border-success border-opacity-30 h-100">
+                <div class="small text-info text-uppercase mb-1">4. Take Profit 2</div>
+                <div class="fs-5 fw-bold text-info mono">Rp {{ "{:,.0f}".format(stock.tp2) }}</div>
+                <div class="small text-muted mt-1">
+                    Target 2 (Runner / S/R)
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 3: CHART & TECHNICAL DETAILS -->
+<div class="row g-4 mb-4">
+    <!-- Chart Column -->
+    <div class="col-lg-8">
+        <div class="card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2 px-2">
+                <div class="fw-semibold text-white">
+                    <i class="bi bi-candlestick text-primary me-2"></i>Daily Price Action &amp; Dynamic EMAs
+                </div>
+                <div class="small d-flex gap-3">
+                    <span class="text-primary"><i class="bi bi-dash-lg"></i> EMA 9: Rp {{ "{:,.0f}".format(stock.ema9|default(0)) }}</span>
+                    <span class="text-warning"><i class="bi bi-dash-lg"></i> EMA 21: Rp {{ "{:,.0f}".format(stock.ema21|default(0)) }}</span>
+                </div>
+            </div>
+            <!-- Lightweight Chart Container -->
+            <div id="tvChart" style="height: 480px; width: 100%; position: relative;"></div>
+        </div>
+    </div>
+
+    <!-- Technical Analysis & Checklist Column -->
+    <div class="col-lg-4 d-flex flex-column gap-3">
+        <!-- Key Indicators Grid -->
+        <div class="card p-3">
+            <h6 class="fw-bold text-white mb-3"><i class="bi bi-speedometer2 text-info me-2"></i>Technical Metrics</h6>
+            <div class="row g-2 mb-2">
+                <div class="col-6 p-2 rounded bg-dark border border-secondary text-center">
+                    <div class="small text-muted" data-bs-toggle="tooltip" title="RSI 14 Period (Optimal bullish momentum: 50-70)">RSI (14) <i class="bi bi-info-circle"></i></div>
+                    <div class="fw-bold mono fs-6 {% if stock.rsi > 70 %}text-warning{% elif stock.rsi >= 50 %}text-success{% else %}text-danger{% endif %}">
+                        {{ "%.1f"|format(stock.rsi) }}
+                    </div>
+                </div>
+                <div class="col-6 p-2 rounded bg-dark border border-secondary text-center">
+                    <div class="small text-muted" data-bs-toggle="tooltip" title="Volume vs 20-day average. (>1.5x indicates strong participation)">Vol Ratio <i class="bi bi-info-circle"></i></div>
+                    <div class="fw-bold mono fs-6 {% if stock.volume_ratio >= 1.5 %}text-success{% else %}text-muted{% endif %}">
+                        {{ "%.2f"|format(stock.volume_ratio) }}x
+                    </div>
+                </div>
+                <div class="col-6 p-2 rounded bg-dark border border-secondary text-center">
+                    <div class="small text-muted" data-bs-toggle="tooltip" title="Distance from dynamic EMA9 support. (>3% extended, >5% severely extended)">Dist EMA9 <i class="bi bi-info-circle"></i></div>
+                    <div class="fw-bold mono fs-6 {% if stock.dist_ema9_pct > 3.0 %}text-danger{% else %}text-success{% endif %}">
+                        {{ "%+.1f"|format(stock.dist_ema9_pct) }}%
+                    </div>
+                </div>
+                <div class="col-6 p-2 rounded bg-dark border border-secondary text-center">
+                    <div class="small text-muted">Est Value</div>
+                    <div class="fw-bold mono fs-6 text-white">Rp {{ "%.1f"|format(stock.est_value / 1000000000) }}B</div>
+                </div>
+                <div class="col-6 p-2 rounded bg-dark border border-secondary text-center">
+                    <div class="small text-muted">Support Zone</div>
+                    <div class="small fw-semibold text-secondary mono">{{ stock.support_zone }}</div>
+                </div>
+                <div class="col-6 p-2 rounded bg-dark border border-secondary text-center">
+                    <div class="small text-muted">Resistance Zone</div>
+                    <div class="small fw-semibold text-secondary mono">{{ stock.resistance_zone }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rule-Based Explanation Checklist -->
+        <div class="card p-3 flex-grow-1">
+            <h6 class="fw-bold text-white mb-2"><i class="bi bi-card-checklist text-info me-2"></i>WHY THIS SIGNAL?</h6>
+            
+            <div class="mb-3">
+                <div class="small fw-bold text-success text-uppercase mb-2">Technical Confirmations:</div>
+                {% if stock.why_this_stock %}
+                    {% for item in stock.why_this_stock %}
+                        <div class="checklist-item checklist-pass small py-1">
+                            <i class="bi bi-check-circle-fill me-1"></i> {{ item }}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-muted small">No strong technical confirmations recorded.</div>
+                {% endif %}
+            </div>
+
+            {% if stock.why_not_ready %}
+            <div>
+                <div class="small fw-bold text-danger text-uppercase mb-2">Risks &amp; Caution Factors:</div>
+                {% for item in stock.why_not_ready %}
+                    <div class="checklist-item checklist-warn small py-1">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> {{ item }}
+                    </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 4: HISTORICAL STRATEGY BACKTEST -->
+{% if backtest and backtest.trades %}
+<div class="card p-4 mb-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3">
+        <div>
+            <h5 class="fw-bold text-white mb-1"><i class="bi bi-clock-history text-primary me-2"></i>Historical Strategy Backtest: {{ stock.symbol }}</h5>
+            <p class="text-muted small mb-0">Simulasi sinyal Pullback &amp; Breakout historis untuk saham {{ stock.symbol }} (1 tahun terakhir tanpa look-ahead bias).</p>
+        </div>
+        <a href="/backtest?symbol={{ stock.symbol }}" class="btn btn-sm btn-outline-primary px-3">
+            <i class="bi bi-box-arrow-up-right me-1"></i> Buka di Modul Backtest
+        </a>
+    </div>
+
+    <!-- Quick Backtest Stats -->
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3 p-2 bg-dark rounded border border-secondary text-center">
+            <div class="small text-muted">Win Rate</div>
+            <div class="fw-bold mono fs-5 {% if backtest.metrics.win_rate >= 50 %}text-success{% else %}text-danger{% endif %}">
+                {{ backtest.metrics.win_rate }}%
+            </div>
+        </div>
+        <div class="col-6 col-md-3 p-2 bg-dark rounded border border-secondary text-center">
+            <div class="small text-muted">Profit Factor</div>
+            <div class="fw-bold mono fs-5 {% if backtest.metrics.profit_factor >= 1.5 %}text-success{% else %}text-warning{% endif %}">
+                {{ backtest.metrics.profit_factor }}
+            </div>
+        </div>
+        <div class="col-6 col-md-3 p-2 bg-dark rounded border border-secondary text-center">
+            <div class="small text-muted">Total Simulated Trades</div>
+            <div class="fw-bold mono fs-5 text-white">
+                {{ backtest.metrics.total_trades }}
+            </div>
+        </div>
+        <div class="col-6 col-md-3 p-2 bg-dark rounded border border-secondary text-center">
+            <div class="small text-muted">Avg R-Multiple</div>
+            <div class="fw-bold mono fs-5 text-info">
+                {{ backtest.metrics.avg_r }}R
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- SECTION 5: AI ANALYSIS & CONTEXT (DECISION SUPPORT LAYER) -->
+<div class="card p-4 mb-4" id="ai-panel">
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <span style="font-size:1.4rem;">🤖</span>
+        <h5 class="fw-bold text-white mb-0">AI Context &amp; News Sentiment</h5>
+        <span class="badge bg-primary bg-opacity-75 ms-1" style="font-size:0.65rem;">Decision Support · Google Gemini</span>
+        <div id="ai-model-badge" class="ms-auto small text-muted" style="display:none;"></div>
+    </div>
+
+    <!-- Signal Comparison Alert (System vs AI) -->
+    <div id="ai-divergence-alert" class="alert alert-warning py-2 mb-3" style="display:none;">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+            <div>
+                <strong>Perbedaan Pandangan Sinyal:</strong>
+                Sistem teknikal membaca kondisi <strong class="text-white">{{ stock.status }}</strong>, namun AI menyarankan <strong id="divergence-ai-action" class="text-warning">HOLD</strong> berdasarkan sentimen berita terkini. Evaluasi risiko sebelum mengambil keputusan.
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading state -->
+    <div id="ai-loading" class="text-center py-4">
+        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+        <span class="text-muted small">Sedang memproses analisis AI Gemini + berita terkini...</span>
+    </div>
+
+    <!-- Error state -->
+    <div id="ai-error" style="display:none;">
+        <div class="alert alert-warning mb-0 py-3">
+            <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-key-fill text-warning fs-5"></i>
+                <div>
+                    <strong id="ai-error-title" class="d-block mb-1">Pengaturan API Key Diperlukan</strong>
+                    <span id="ai-error-msg" class="small"></span>
+                    <div class="mt-2 small text-muted">
+                        1. Dapatkan API Key gratis di: <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-info fw-bold">Google AI Studio (Gratis)</a><br>
+                        2. Masukkan ke file <code>.env</code>: <code>GEMINI_API_KEY=your_key_here</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Result state -->
+    <div id="ai-result" style="display:none;">
+        <!-- Side by Side: System Signal vs AI View -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="bg-dark rounded p-3 text-center h-100 border border-secondary">
+                    <div class="text-muted small mb-1 text-uppercase">System Signal</div>
+                    <div class="fs-5 fw-bold text-white">{{ stock.status }}</div>
+                    <div class="text-secondary small mt-1">{{ stock.grade }} · {{ stock.score }}/100</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="bg-dark rounded p-3 text-center h-100 border border-secondary">
+                    <div class="text-muted small mb-1 text-uppercase">AI Recommendation</div>
+                    <div id="ai-rec-badge" class="fs-5 fw-bold"></div>
+                    <div id="ai-rec-reason" class="text-muted small mt-1" style="font-size:0.75rem;"></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="bg-dark rounded p-3 h-100 border border-secondary">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted small text-uppercase">AI Confidence</span>
+                        <span id="ai-conf-val" class="fw-bold text-white mono">0/100</span>
+                    </div>
+                    <div class="progress mb-2" style="height:8px;">
+                        <div id="ai-conf-bar" class="progress-bar" role="progressbar"
+                             style="width:0%; transition: width 0.8s ease;" aria-valuenow="0"
+                             aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <div class="text-muted small" id="ai-summary"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Risks + Opportunities row -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <div class="bg-dark rounded p-3 h-100 border border-secondary">
+                    <div class="text-danger small fw-bold mb-2"><i class="bi bi-exclamation-circle me-1"></i>Risiko Utama (AI Context)</div>
+                    <ul class="mb-0 ps-3 small text-muted" id="ai-risks"></ul>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="bg-dark rounded p-3 h-100 border border-secondary">
+                    <div class="text-success small fw-bold mb-2"><i class="bi bi-graph-up-arrow me-1"></i>Peluang Utama (AI Context)</div>
+                    <ul class="mb-0 ps-3 small text-muted" id="ai-opportunities"></ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- News Context -->
+        <div class="bg-dark rounded p-3 border border-secondary">
+            <div class="text-info small fw-bold mb-1"><i class="bi bi-newspaper me-1"></i>Konteks Berita Terkini</div>
+            <div class="text-muted small" id="ai-news-context"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── AI Analysis Lazy Loader ───────────────────────────────────────────────
+    (function () {
+        const symbol = "{{ stock.symbol }}";
+
+        async function loadAIAnalysis() {
+            try {
+                const resp = await fetch(`/api/ai-analysis/${symbol}`);
+                const data = await resp.json();
+
+                document.getElementById('ai-loading').style.display = 'none';
+
+                if (!resp.ok || data.error) {
+                    const msg = data.message || 'Analisis AI tidak tersedia saat ini.';
+                    document.getElementById('ai-error-msg').textContent = msg;
+                    document.getElementById('ai-error').style.display = 'block';
+                    return;
+                }
+
+                // ── Recommendation badge (BUY / HOLD / SELL) ─────────────────
+                const rec = (data.recommendation || data.ai_recommendation || 'HOLD').toUpperCase();
+                const recEl = document.getElementById('ai-rec-badge');
+                if (rec === 'BUY') {
+                    recEl.innerHTML = '⚡ BUY';
+                    recEl.className = 'fs-4 fw-bold text-success';
+                } else if (rec === 'SELL' || rec === 'AVOID') {
+                    recEl.innerHTML = '🚫 SELL';
+                    recEl.className = 'fs-4 fw-bold text-danger';
+                } else {
+                    recEl.innerHTML = '⏳ HOLD';
+                    recEl.className = 'fs-4 fw-bold text-warning';
+                }
+                document.getElementById('ai-rec-reason').textContent =
+                    data.ai_recommendation_reason || '';
+
+                // ── Check divergence between System Signal and AI View ─────────
+                const systemStatus = "{{ stock.status }}";
+                const divAlert = document.getElementById('ai-divergence-alert');
+                if (divAlert) {
+                    if (systemStatus === 'READY' && rec !== 'BUY') {
+                        document.getElementById('divergence-ai-action').textContent = rec;
+                        divAlert.style.display = 'block';
+                    } else {
+                        divAlert.style.display = 'none';
+                    }
+                }
+
+                // ── Confidence bar ────────────────────────────────────────────
+                const conf = parseInt(data.confidence ?? data.ai_confidence ?? 0);
+                const bar = document.getElementById('ai-conf-bar');
+                document.getElementById('ai-conf-val').textContent = `${conf}/100`;
+                bar.style.width = '0%';
+                const barColor = conf >= 70 ? '#22c55e' : conf >= 50 ? '#f59e0b' : '#ef4444';
+                bar.style.background = barColor;
+                setTimeout(() => { bar.style.width = `${conf}%`; }, 100);
+
+                // ── Summary (show news_context if available) ──────────────────
+                const summaryText = data.news_context || data.ai_summary || '-';
+                document.getElementById('ai-summary').textContent = summaryText;
+
+                // ── Risks ─────────────────────────────────────────────────────
+                const risksEl = document.getElementById('ai-risks');
+                const risks = data.risks || data.ai_risks || [];
+                risks.forEach(r => {
+                    const li = document.createElement('li');
+                    li.textContent = r;
+                    risksEl.appendChild(li);
+                });
+                if (risks.length === 0) {
+                    risksEl.innerHTML = '<li>Tidak ada risiko spesifik terdeteksi.</li>';
+                }
+
+                // ── Opportunities ─────────────────────────────────────────────
+                const oppEl = document.getElementById('ai-opportunities');
+                const opps = data.opportunities || data.ai_opportunities || [];
+                opps.forEach(o => {
+                    const li = document.createElement('li');
+                    li.textContent = o;
+                    oppEl.appendChild(li);
+                });
+                if (opps.length === 0) {
+                    oppEl.innerHTML = '<li>Belum ada peluang signifikan teridentifikasi.</li>';
+                }
+
+                // ── News Context ──────────────────────────────────────────────
+                const newsCtxEl = document.getElementById('ai-news-context');
+                if (newsCtxEl) {
+                    newsCtxEl.textContent = data.news_context || data.ai_market_context || '-';
+                }
+
+                // ── Model badge ───────────────────────────────────────────────
+                if (data.model_used) {
+                    const modelBadge = document.getElementById('ai-model-badge');
+                    modelBadge.textContent = `Model: ${data.model_used} · 📰 Berita Realtime`;
+                    modelBadge.style.display = 'block';
+                }
+
+                document.getElementById('ai-result').style.display = 'block';
+
+            } catch (err) {
+                document.getElementById('ai-loading').style.display = 'none';
+                document.getElementById('ai-error-msg').textContent =
+                    'Gagal memuat analisis AI. Pastikan server berjalan.';
+                document.getElementById('ai-error').style.display = 'block';
+                console.error('AI fetch error:', err);
+            }
+        }
+
+        // Start fetch after page paint
+        window.addEventListener('load', loadAIAnalysis);
+    })();
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const rawCandles = {{ stock.candles | tojson }};
+        const chartContainer = document.getElementById('tvChart');
+
+        if (!rawCandles || rawCandles.length === 0) {
+            chartContainer.innerHTML = '<div class="text-center py-5 text-muted">No historical candle data found for chart.</div>';
+            return;
+        }
+
+        // Clean, deduplicate and sort data ascending by date
+        const seenDates = new Set();
+        const candleData = [];
+        rawCandles.forEach(d => {
+            if (d.time && !seenDates.has(d.time)) {
+                seenDates.add(d.time);
+                candleData.push(d);
+            }
+        });
+        candleData.sort((a, b) => a.time.localeCompare(b.time));
+
+        const chart = LightweightCharts.createChart(chartContainer, {
+            autoSize: true,
+            height: 480,
+            layout: {
+                background: { color: '#151b26' },
+                textColor: '#94a3b8',
+            },
+            grid: {
+                vertLines: { color: '#1e293b' },
+                horzLines: { color: '#1e293b' },
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+            },
+            timeScale: {
+                borderColor: '#232d3f',
+                timeVisible: true,
+                secondsVisible: false,
+            },
+            rightPriceScale: {
+                borderColor: '#232d3f',
+            },
+        });
+
+        // Candlestick Series
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#22c55e',
+            downColor: '#ef4444',
+            borderVisible: false,
+            wickUpColor: '#22c55e',
+            wickDownColor: '#ef4444',
+        });
+
+        candlestickSeries.setData(candleData.map(d => ({
+            time: d.time,
+            open: parseFloat(d.open),
+            high: parseFloat(d.high),
+            low: parseFloat(d.low),
+            close: parseFloat(d.close)
+        })));
+
+        // EMA 9 Line
+        const ema9Data = candleData
+            .filter(d => d.ema9 !== null && d.ema9 !== undefined && !isNaN(d.ema9))
+            .map(d => ({ time: d.time, value: parseFloat(d.ema9) }));
+            
+        if (ema9Data.length > 0) {
+            const ema9Series = chart.addLineSeries({
+                color: '#3b82f6',
+                lineWidth: 2,
+                title: 'EMA 9'
+            });
+            ema9Series.setData(ema9Data);
+        }
+
+        // EMA 21 Line
+        const ema21Data = candleData
+            .filter(d => d.ema21 !== null && d.ema21 !== undefined && !isNaN(d.ema21))
+            .map(d => ({ time: d.time, value: parseFloat(d.ema21) }));
+
+        if (ema21Data.length > 0) {
+            const ema21Series = chart.addLineSeries({
+                color: '#f59e0b',
+                lineWidth: 2,
+                title: 'EMA 21'
+            });
+            ema21Series.setData(ema21Data);
+        }
+
+        // Stop Loss Price Line
+        const slPrice = parseFloat("{{ stock.stop_loss }}");
+        if (slPrice > 0) {
+            candlestickSeries.createPriceLine({
+                price: slPrice,
+                color: '#ef4444',
+                lineWidth: 2,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: 'SL',
+            });
+        }
+
+        // TP1 Price Line
+        const tp1Price = parseFloat("{{ stock.tp1 }}");
+        if (tp1Price > 0) {
+            candlestickSeries.createPriceLine({
+                price: tp1Price,
+                color: '#22c55e',
+                lineWidth: 2,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: 'TP1',
+            });
+        }
+
+        // Fit content so all bars are immediately visible
+        chart.timeScale().fitContent();
+    });
+</script>
+{% endblock %}
+
+

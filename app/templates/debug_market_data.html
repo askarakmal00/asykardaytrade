@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% set active_page = "" %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="/" class="text-secondary small text-decoration-none"><i class="bi bi-chevron-left"></i> Dashboard</a>
+</div>
+
+<div class="d-flex align-items-center gap-3 mb-4">
+    <h3 class="fw-bold text-white mb-0">
+        <i class="bi bi-bug text-danger me-2"></i>
+        Market Data Audit: <span class="mono text-warning">{{ symbol }}</span>
+    </h3>
+    <span class="badge bg-danger">DEBUG ONLY</span>
+</div>
+
+<div class="alert alert-warning border-0 mb-4" style="background-color: rgba(245,158,11,0.1); border-left: 4px solid #f59e0b !important;">
+    <strong>Important:</strong> This page audits raw data from Yahoo Finance across all timeframes.
+    "Current Price" must come from <code>fast_info.last_price</code> (quote), NOT from <code>daily_data["Close"].iloc[-1]</code> (historical candle).
+</div>
+
+<!-- System Time -->
+<div class="card p-3 mb-4">
+    <h5 class="fw-bold text-info mb-3"><i class="bi bi-clock me-2"></i>System Time</h5>
+    <div class="row g-2">
+        <div class="col-md-3">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Server Time (UTC)</div>
+                <div class="mono fw-bold text-white">{{ audit.system_time_utc }}</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Server Time (WIB)</div>
+                <div class="mono fw-bold text-white">{{ audit.system_time_wib }}</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Market State</div>
+                <div class="mono fw-bold {% if audit.market_state == 'REGULAR' %}text-success{% else %}text-warning{% endif %}">
+                    {{ audit.market_state }}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Data Source</div>
+                <div class="mono fw-bold text-info">Yahoo Finance</div>
+                <div class="text-muted small">{{ audit.data_note }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quote Section -->
+<div class="card p-3 mb-4 border border-success">
+    <h5 class="fw-bold text-success mb-3"><i class="bi bi-currency-dollar me-2"></i>A. Quote (fast_info) — Closest to Current Price</h5>
+    <div class="row g-2">
+        <div class="col-md-2">
+            <div class="p-2 rounded bg-dark border border-success" style="border-color: #22c55e !important;">
+                <div class="text-muted small">Current Price</div>
+                <div class="mono fw-bold text-success fs-5">Rp {{ "{:,.0f}".format(audit.quote.current_price) if audit.quote.current_price else "N/A" }}</div>
+                <div class="text-muted" style="font-size:0.7rem;">fast_info.last_price</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Previous Close</div>
+                <div class="mono fw-bold text-white">Rp {{ "{:,.0f}".format(audit.quote.previous_close) if audit.quote.previous_close else "N/A" }}</div>
+                <div class="text-muted" style="font-size:0.7rem;">fast_info.previous_close</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Day Open</div>
+                <div class="mono fw-bold text-white">Rp {{ "{:,.0f}".format(audit.quote.day_open) if audit.quote.day_open else "N/A" }}</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Day High</div>
+                <div class="mono fw-bold text-white">Rp {{ "{:,.0f}".format(audit.quote.day_high) if audit.quote.day_high else "N/A" }}</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Day Low</div>
+                <div class="mono fw-bold text-white">Rp {{ "{:,.0f}".format(audit.quote.day_low) if audit.quote.day_low else "N/A" }}</div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="p-2 rounded bg-dark border border-secondary">
+                <div class="text-muted small">Volume</div>
+                <div class="mono fw-bold text-white">{{ "{:,}".format(audit.quote.volume) if audit.quote.volume else "N/A" }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Daily Candles Section -->
+<div class="card p-3 mb-4">
+    <h5 class="fw-bold text-primary mb-1"><i class="bi bi-bar-chart-line me-2"></i>B. Daily Candles (interval=1d) — Last 10 Rows</h5>
+    <div class="text-muted small mb-3">
+        <i class="bi bi-exclamation-triangle text-warning me-1"></i>
+        <strong>Daily Close is the PREVIOUS SESSION close, NOT the current price.</strong>
+        Latest daily timestamp: <span class="mono text-warning">{{ audit.daily.last_timestamp_wib }}</span>
+        | Candle complete: <span class="mono {% if audit.daily.is_complete %}text-success{% else %}text-danger{% endif %}">{{ audit.daily.is_complete }}</span>
+    </div>
+    {% if audit.daily.rows %}
+    <div class="table-responsive">
+        <table class="table table-dark table-sm table-hover mb-0 mono small">
+            <thead>
+                <tr class="text-secondary">
+                    <th>Timestamp (WIB)</th>
+                    <th>Open</th>
+                    <th>High</th>
+                    <th>Low</th>
+                    <th>Daily Close</th>
+                    <th>Volume</th>
+                    <th>Note</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in audit.daily.rows %}
+                <tr {% if loop.last %}class="table-primary"{% endif %}>
+                    <td>{{ row.timestamp_wib }}</td>
+                    <td>{{ "{:,.0f}".format(row.open) if row.open else "NaN" }}</td>
+                    <td>{{ "{:,.0f}".format(row.high) if row.high else "NaN" }}</td>
+                    <td>{{ "{:,.0f}".format(row.low) if row.low else "NaN" }}</td>
+                    <td class="fw-bold {% if loop.last %}text-warning{% endif %}">{{ "{:,.0f}".format(row.close) if row.close else "NaN" }}</td>
+                    <td>{{ "{:,}".format(row.volume) if row.volume else "0" }}</td>
+                    <td class="text-muted" style="font-size:0.7rem;">
+                        {% if loop.last %}
+                            Latest Daily Close (PREV SESSION)
+                        {% else %}
+                            Historical
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+        <p class="text-muted">No daily data available.</p>
+    {% endif %}
+</div>
+
+<!-- 1H Candles Section -->
+<div class="card p-3 mb-4">
+    <h5 class="fw-bold text-info mb-1"><i class="bi bi-bar-chart me-2"></i>C. Intraday 1H Candles (interval=1h) — Last 10 Rows</h5>
+    <div class="text-muted small mb-3">
+        Latest 1H timestamp: <span class="mono text-warning">{{ audit.h1.last_timestamp_wib }}</span>
+        | Latest 1H Close: <span class="mono text-info">Rp {{ "{:,.0f}".format(audit.h1.last_close) if audit.h1.last_close else "N/A" }}</span>
+        | Candle complete: <span class="mono {% if audit.h1.is_complete %}text-success{% else %}text-danger{% endif %}">{{ audit.h1.is_complete }}</span>
+    </div>
+    {% if audit.h1.rows %}
+    <div class="table-responsive">
+        <table class="table table-dark table-sm table-hover mb-0 mono small">
+            <thead>
+                <tr class="text-secondary">
+                    <th>Timestamp (WIB)</th>
+                    <th>Open</th>
+                    <th>High</th>
+                    <th>Low</th>
+                    <th>Latest 1H Close</th>
+                    <th>Volume</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in audit.h1.rows %}
+                <tr {% if loop.last %}class="table-info"{% endif %}>
+                    <td>{{ row.timestamp_wib }}</td>
+                    <td>{{ "{:,.0f}".format(row.open) if row.open else "NaN" }}</td>
+                    <td>{{ "{:,.0f}".format(row.high) if row.high else "NaN" }}</td>
+                    <td>{{ "{:,.0f}".format(row.low) if row.low else "NaN" }}</td>
+                    <td class="fw-bold">{{ "{:,.0f}".format(row.close) if row.close else "NaN" }}</td>
+                    <td>{{ "{:,}".format(row.volume) if row.volume else "0" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+        <p class="text-muted">No 1H data returned by Yahoo Finance for this symbol.</p>
+    {% endif %}
+</div>
+
+<!-- 15M Candles Section -->
+<div class="card p-3 mb-4">
+    <h5 class="fw-bold text-warning mb-1"><i class="bi bi-bar-chart me-2"></i>D. Intraday 15M Candles (interval=15m) — Last 10 Rows</h5>
+    <div class="text-muted small mb-3">
+        Latest 15M timestamp: <span class="mono text-warning">{{ audit.m15.last_timestamp_wib }}</span>
+        | Latest 15M Close: <span class="mono text-warning">Rp {{ "{:,.0f}".format(audit.m15.last_close) if audit.m15.last_close else "N/A" }}</span>
+        | Candle complete: <span class="mono {% if audit.m15.is_complete %}text-success{% else %}text-danger{% endif %}">{{ audit.m15.is_complete }}</span>
+    </div>
+    {% if audit.m15.rows %}
+    <div class="table-responsive">
+        <table class="table table-dark table-sm table-hover mb-0 mono small">
+            <thead>
+                <tr class="text-secondary">
+                    <th>Timestamp (WIB)</th>
+                    <th>Open</th>
+                    <th>High</th>
+                    <th>Low</th>
+                    <th>Latest 15M Close</th>
+                    <th>Volume</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in audit.m15.rows %}
+                <tr {% if loop.last %}class="table-warning"{% endif %}>
+                    <td>{{ row.timestamp_wib }}</td>
+                    <td>{{ "{:,.0f}".format(row.open) if row.open else "NaN" }}</td>
+                    <td>{{ "{:,.0f}".format(row.high) if row.high else "NaN" }}</td>
+                    <td>{{ "{:,.0f}".format(row.low) if row.low else "NaN" }}</td>
+                    <td class="fw-bold">{{ "{:,.0f}".format(row.close) if row.close else "NaN" }}</td>
+                    <td>{{ "{:,}".format(row.volume) if row.volume else "0" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+        <p class="text-muted">No 15M data returned by Yahoo Finance for this symbol.</p>
+    {% endif %}
+</div>
+
+<!-- Discrepancy Explanation Card -->
+<div class="card p-4 mb-4 border border-danger" style="border-color: #ef4444 !important;">
+    <h5 class="fw-bold text-danger mb-3"><i class="bi bi-exclamation-octagon me-2"></i>Discrepancy Analysis</h5>
+    <table class="table table-dark table-sm mb-3">
+        <thead><tr class="text-secondary small"><th>Source</th><th>Price</th><th>Label</th><th>Correct Use</th></tr></thead>
+        <tbody>
+            <tr>
+                <td class="text-success fw-bold">fast_info.last_price</td>
+                <td class="mono text-success fw-bold">Rp {{ "{:,.0f}".format(audit.quote.current_price) if audit.quote.current_price else "N/A" }}</td>
+                <td><span class="badge bg-success">Current Price</span></td>
+                <td class="text-muted small">Use this in UI header, signal engine input</td>
+            </tr>
+            <tr>
+                <td class="text-warning">fast_info.previous_close</td>
+                <td class="mono text-warning">Rp {{ "{:,.0f}".format(audit.quote.previous_close) if audit.quote.previous_close else "N/A" }}</td>
+                <td><span class="badge bg-warning text-dark">Previous Close</span></td>
+                <td class="text-muted small">Yesterday's closing price</td>
+            </tr>
+            <tr>
+                <td class="text-primary">daily_ohlcv["Close"].iloc[-1]</td>
+                <td class="mono text-primary">Rp {{ "{:,.0f}".format(audit.daily.last_close) if audit.daily.last_close else "NaN" }}</td>
+                <td><span class="badge bg-primary">Daily Close (prev session)</span></td>
+                <td class="text-muted small">For chart drawing, indicators only. NOT current price.</td>
+            </tr>
+            <tr>
+                <td class="text-info">intraday_1h["Close"].iloc[-1]</td>
+                <td class="mono text-info">Rp {{ "{:,.0f}".format(audit.h1.last_close) if audit.h1.last_close else "N/A" }}</td>
+                <td><span class="badge bg-info text-dark">Latest 1H Close</span></td>
+                <td class="text-muted small">Latest completed 1H candle close</td>
+            </tr>
+            <tr>
+                <td class="text-warning">intraday_15m["Close"].iloc[-1]</td>
+                <td class="mono text-warning">Rp {{ "{:,.0f}".format(audit.m15.last_close) if audit.m15.last_close else "N/A" }}</td>
+                <td><span class="badge bg-warning text-dark">Latest 15M Close</span></td>
+                <td class="text-muted small">Latest completed 15M candle close</td>
+            </tr>
+        </tbody>
+    </table>
+    <div class="p-3 rounded" style="background: rgba(239,68,68,0.08); border-left: 3px solid #ef4444;">
+        <strong class="text-danger">Root Cause of Discrepancy:</strong>
+        <p class="mb-1 mt-2">{{ audit.discrepancy_explanation }}</p>
+    </div>
+</div>
+{% endblock %}

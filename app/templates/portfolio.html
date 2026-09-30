@@ -1,0 +1,817 @@
+{% extends "base.html" %}
+{% set active_page = "portfolio" %}
+
+{% block title %}Portfolio Manager — IDX Signal System{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+  <!-- ── HEADER ─────────────────────────────────────────── -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h4 class="mb-1 fw-bold">
+        <i class="bi bi-briefcase text-success me-2"></i>Portfolio Manager
+      </h4>
+      <div class="text-muted small">
+        <i class="bi bi-info-circle me-1"></i>
+        Data Harga: <strong class="text-warning">Yahoo Finance — Delayed (~15–20 menit)</strong>
+        &nbsp;|&nbsp; 1 Lot = 100 Lembar Saham
+      </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <button class="btn btn-outline-secondary btn-sm" onclick="refreshPortfolio()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh Harga
+      </button>
+      <button class="btn btn-outline-primary btn-sm" id="btn-portfolio-ai" onclick="runPortfolioAI()">
+        <i class="bi bi-robot me-1"></i>AI Portfolio Analysis
+      </button>
+      <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addPositionModal">
+        <i class="bi bi-plus-lg me-1"></i>Tambah Posisi
+      </button>
+    </div>
+  </div>
+
+  <!-- ── SUMMARY CARDS ─────────────────────────────────── -->
+  <div class="row g-3 mb-4" id="summary-cards">
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card text-center py-3 h-100 shadow-sm">
+        <div class="small text-muted mb-1 text-nowrap">Total Investasi</div>
+        <div class="fs-5 fw-bold mono text-nowrap" id="s-invested">—</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card text-center py-3 h-100 shadow-sm">
+        <div class="small text-muted mb-1 text-nowrap">Nilai Sekarang</div>
+        <div class="fs-5 fw-bold mono text-nowrap" id="s-value">—</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card text-center py-3 h-100 shadow-sm">
+        <div class="small text-muted mb-1 text-nowrap">Unrealized P/L</div>
+        <div class="fs-5 fw-bold mono text-nowrap" id="s-pnl">—</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card text-center py-3 h-100 shadow-sm">
+        <div class="small text-muted mb-1 text-nowrap">Total Return</div>
+        <div class="fs-5 fw-bold text-nowrap" id="s-pnl-pct">—</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card text-center py-3 h-100 shadow-sm">
+        <div class="small text-muted mb-1 text-nowrap">Win / Loss</div>
+        <div class="fs-5 fw-bold text-nowrap">
+          <span class="text-success" id="s-profit">0</span>
+          <span class="text-muted">/</span>
+          <span class="text-danger" id="s-loss">0</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card text-center py-3 h-100 shadow-sm">
+        <div class="small text-muted mb-1 text-nowrap">Total Posisi</div>
+        <div class="fs-5 fw-bold text-nowrap" id="s-total">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── AI PORTFOLIO HEALTH (muncul setelah AI dijalankan) ── -->
+  <div id="ai-health-card" class="card mb-4 shadow-sm" style="display:none; border-color: rgba(59, 130, 246, 0.4);">
+    <div class="card-header fw-semibold py-2 d-flex align-items-center justify-content-between">
+      <div>
+        <i class="bi bi-robot me-2 text-primary"></i>AI Portfolio Health
+        <span class="badge bg-secondary ms-2" id="ai-model-badge">Gemini</span>
+      </div>
+      <button type="button" class="btn-close btn-close-white" onclick="document.getElementById('ai-health-card').style.display='none'"></button>
+    </div>
+    <div class="card-body" id="ai-health-body">
+      <div class="d-flex align-items-center gap-4 flex-wrap mb-3">
+        <div class="text-center px-3 py-2 rounded" style="background: rgba(255,255,255,0.03); min-width: 120px;">
+          <div class="display-6 fw-bold mb-0" id="ai-score">—</div>
+          <div class="small text-muted">Health Score</div>
+        </div>
+        <div class="flex-grow-1">
+          <div class="fs-5 fw-bold mb-1" id="ai-health-badge"></div>
+          <div class="text-light" id="ai-health-summary"></div>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="p-3 rounded h-100" style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2);">
+            <div class="small text-danger fw-semibold mb-2"><i class="bi bi-shield-exclamation me-1"></i>Key Risks</div>
+            <ul class="small mb-0 ps-3" id="ai-risks"></ul>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="p-3 rounded h-100" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2);">
+            <div class="small text-success fw-semibold mb-2"><i class="bi bi-lightbulb me-1"></i>Saran Portfolio</div>
+            <ul class="small mb-0 ps-3" id="ai-suggestions"></ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-3 small text-warning" id="ai-concentration"></div>
+    </div>
+  </div>
+
+  <!-- ── HOLDINGS TABLE (FULL WIDTH) ────────────────────── -->
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+      <div class="fw-semibold">
+        <i class="bi bi-table me-2"></i>Daftar Kepemilikan Saham (Holdings)
+      </div>
+      <span class="badge bg-secondary" id="holdings-count">0 posisi</span>
+    </div>
+    <div class="card-body p-0" id="holdings-table-wrapper">
+      <div class="text-center py-5 text-muted" id="holdings-empty">
+        <i class="bi bi-briefcase display-4 d-block mb-3 opacity-50"></i>
+        <h5>Portfolio Masih Kosong</h5>
+        <p class="small mb-3">Klik tombol di bawah untuk mulai mencatat posisi saham Anda.</p>
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addPositionModal">
+          <i class="bi bi-plus-lg me-1"></i>Tambah Posisi Pertama
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── VISUALIZATIONS ROW ─────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <!-- Allocation Doughnut Chart -->
+    <div class="col-lg-6">
+      <div class="card h-100 shadow-sm">
+        <div class="card-header py-2 fw-semibold">
+          <i class="bi bi-pie-chart me-2 text-info"></i>Alokasi Portofolio (% Modal)
+        </div>
+        <div class="card-body p-3 d-flex flex-column justify-content-center align-items-center">
+          <div style="position: relative; width: 100%; max-width: 360px; height: 260px;">
+            <canvas id="allocChart"></canvas>
+          </div>
+          <div class="text-center text-muted small py-4" id="alloc-empty" style="display:none;">
+            Belum ada data alokasi portofolio.
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- P/L Bar Chart -->
+    <div class="col-lg-6">
+      <div class="card h-100 shadow-sm">
+        <div class="card-header py-2 fw-semibold">
+          <i class="bi bi-bar-chart me-2 text-warning"></i>Unrealized P/L per Saham
+        </div>
+        <div class="card-body p-3 d-flex flex-column justify-content-center align-items-center">
+          <div style="position: relative; width: 100%; height: 260px;">
+            <canvas id="pnlChart"></canvas>
+          </div>
+          <div class="text-center text-muted small py-4" id="pnl-chart-empty" style="display:none;">
+            Belum ada data profit/loss.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── ADD POSITION MODAL ─────────────────────────────────── -->
+<div class="modal fade" id="addPositionModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Tambah Posisi Saham</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info small py-2 mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          <strong>Aturan BEI:</strong> 1 Lot = 100 lembar saham. Masukkan jumlah dalam satuan <strong>LOT</strong>.
+        </div>
+        <div id="add-form-error" class="alert alert-danger small py-2" style="display:none;"></div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Symbol / Ticker <span class="text-danger">*</span></label>
+            <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary"
+                   id="f-symbol" placeholder="contoh: BBCA" style="text-transform:uppercase">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Jumlah (LOT) <span class="text-danger">*</span></label>
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                   id="f-lots" placeholder="10" min="1">
+            <div class="form-text text-muted" id="f-shares-hint"></div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Harga Beli Rata-rata <span class="text-danger">*</span></label>
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                   id="f-avg-buy" placeholder="8500" min="1">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Tanggal Beli <span class="text-danger">*</span></label>
+            <input type="date" class="form-control form-control-sm bg-dark text-white border-secondary" id="f-buy-date">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Target Harga <span class="text-muted">(opsional)</span></label>
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                   id="f-target" placeholder="9000" min="0">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Stop Loss <span class="text-muted">(opsional)</span></label>
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                   id="f-sl" placeholder="8200" min="0">
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted">Catatan <span class="text-muted">(opsional)</span></label>
+            <textarea class="form-control form-control-sm bg-dark text-white border-secondary" id="f-notes"
+                      rows="2" placeholder="Alasan entry, setup, atau rencana trading..."></textarea>
+          </div>
+          <!-- Preview kalkulasi -->
+          <div class="col-12" id="calc-preview" style="display:none;">
+            <div class="card" style="background:#0c1017; border: 1px solid #232d3f;">
+              <div class="card-body py-2 px-3 small">
+                <strong class="text-muted">Estimasi Modal:</strong>
+                <span id="prev-shares" class="ms-2"></span> lembar saham &nbsp;|&nbsp;
+                Total Investasi: <strong id="prev-invested" class="text-info"></strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+        <button class="btn btn-success btn-sm" id="btn-add-submit" onclick="submitAddPosition()">
+          <i class="bi bi-check-lg me-1"></i>Simpan Posisi
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── EDIT MODAL ─────────────────────────────────────────── -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Posisi — <span id="edit-symbol-title" class="text-warning"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="edit-form-error" class="alert alert-danger small py-2" style="display:none;"></div>
+        <input type="hidden" id="edit-id">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Jumlah (LOT)</label>
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary" id="e-lots" min="1">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Harga Beli Rata-rata</label>
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary" id="e-avg-buy" min="1">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Tanggal Beli</label>
+            <input type="date" class="form-control form-control-sm bg-dark text-white border-secondary" id="e-buy-date">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Target Harga</label>
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary" id="e-target" min="0">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Stop Loss</label>
+            <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary" id="e-sl" min="0">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Nama Perusahaan</label>
+            <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="e-company">
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted">Catatan</label>
+            <textarea class="form-control form-control-sm bg-dark text-white border-secondary" id="e-notes" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+        <button class="btn btn-primary btn-sm" id="btn-edit-submit" onclick="submitEdit()">
+          <i class="bi bi-check-lg me-1"></i>Simpan Perubahan
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── DELETE CONFIRMATION MODAL ──────────────────────────── -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title text-danger"><i class="bi bi-trash me-2"></i>Hapus Posisi</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1">Apakah Anda yakin ingin menghapus posisi <strong id="del-symbol-text" class="text-warning"></strong> dari portofolio?</p>
+        <p class="small text-muted mb-0">Tindakan ini akan menghapus posisi dari daftar dan perhitungan portofolio.</p>
+        <input type="hidden" id="del-holding-id">
+      </div>
+      <div class="modal-footer border-secondary">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-danger btn-sm" id="btn-confirm-delete" onclick="executeDelete()">
+          <i class="bi bi-trash me-1"></i>Ya, Hapus
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js CDN (lightweight) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Global State ──────────────────────────────────────────
+let portfolioData = { holdings: [], summary: {} };
+window.holdingsCache = {};
+let allocChart = null;
+let pnlChart   = null;
+
+// ── Formatters ────────────────────────────────────────────
+const fmtRp  = v => v != null ? 'Rp ' + Math.abs(v).toLocaleString('id-ID', {maximumFractionDigits:0}) : '—';
+const fmtPct = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—';
+const pnlColor = v => (v > 0 ? '#10b981' : v < 0 ? '#ef4444' : '#94a3b8');
+
+// ── Action Badge ──────────────────────────────────────────
+function actionBadge(action) {
+  if (!action) return '<span class="text-muted">—</span>';
+  const map = {
+    'STRONG_HOLD':          'bg-success',
+    'HOLD':                 'bg-success',
+    'WATCH':                'bg-info text-dark',
+    'TIGHTEN_STOP_LOSS':    'bg-warning text-dark',
+    'TAKE_PROFIT_PARTIAL':  'bg-warning text-dark',
+    'TAKE_PROFIT':          'bg-success',
+    'CUT_LOSS':             'bg-danger',
+    'EXIT':                 'bg-danger',
+    'INSUFFICIENT_DATA':    'bg-secondary',
+  };
+  const cls = map[action] || 'bg-secondary';
+  return `<span class="badge ${cls} text-nowrap" style="font-size:0.72rem;">${action}</span>`;
+}
+
+// ── Load Portfolio ─────────────────────────────────────────
+async function loadPortfolio() {
+  try {
+    const res  = await fetch('/api/portfolio');
+    const data = await res.json();
+    portfolioData = data;
+    
+    // Update cache
+    window.holdingsCache = {};
+    (data.holdings || []).forEach(h => {
+      window.holdingsCache[h.id] = h;
+    });
+
+    renderSummary(data.summary);
+    renderTable(data.holdings);
+    renderCharts(data.holdings);
+  } catch(e) {
+    console.error('loadPortfolio error:', e);
+  }
+}
+
+// ── Render Summary Cards ───────────────────────────────────
+function renderSummary(s) {
+  if (!s) return;
+  const pnlEl = document.getElementById('s-pnl');
+  const pnlPctEl = document.getElementById('s-pnl-pct');
+  const pnl = s.total_unrealized_pnl;
+  const pct = s.total_pnl_pct;
+
+  document.getElementById('s-invested').textContent = fmtRp(s.total_invested);
+  document.getElementById('s-value').textContent    = fmtRp(s.total_current_value);
+  document.getElementById('s-total').textContent    = s.num_holdings || '0';
+  document.getElementById('s-profit').textContent   = s.num_profitable || '0';
+  document.getElementById('s-loss').textContent     = s.num_losing || '0';
+  document.getElementById('holdings-count').textContent = (s.num_holdings || 0) + ' posisi';
+
+  if (pnl != null) {
+    pnlEl.textContent    = (pnl >= 0 ? '+' : '-') + fmtRp(pnl);
+    pnlEl.style.color    = pnlColor(pnl);
+  }
+  if (pct != null) {
+    pnlPctEl.textContent = fmtPct(pct);
+    pnlPctEl.style.color = pnlColor(pct);
+  }
+}
+
+// ── Render Holdings Table ──────────────────────────────────
+function renderTable(holdings) {
+  const wrapper = document.getElementById('holdings-table-wrapper');
+  if (!holdings || holdings.length === 0) {
+    wrapper.innerHTML = `
+      <div class="text-center py-5 text-muted" id="holdings-empty">
+        <i class="bi bi-briefcase display-4 d-block mb-3 opacity-50"></i>
+        <h5>Portfolio Masih Kosong</h5>
+        <p class="small mb-3">Klik tombol di bawah untuk mulai mencatat posisi saham Anda.</p>
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addPositionModal">
+          <i class="bi bi-plus-lg me-1"></i>Tambah Posisi Pertama
+        </button>
+      </div>`;
+    return;
+  }
+
+  const rows = holdings.map(h => {
+    const pnlSign = (h.unrealized_pnl || 0) >= 0 ? '+' : '-';
+    const pnlStyle = `color:${pnlColor(h.unrealized_pnl)}; white-space:nowrap;`;
+    const swScore = h.swing_score != null 
+      ? `<span class="badge bg-secondary">${h.swing_score}</span>` 
+      : '<span class="text-muted">—</span>';
+
+    return `<tr>
+      <td class="ps-3 text-nowrap">
+        <a href="/portfolio/${h.id}" class="text-white text-decoration-none fw-bold">${h.symbol_short || h.symbol}</a>
+        <div class="text-muted" style="font-size:0.72rem; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${h.display_name || ''}</div>
+      </td>
+      <td class="text-center text-nowrap mono">${h.quantity_lots} lot</td>
+      <td class="text-end text-nowrap mono">${h.avg_buy_price != null ? h.avg_buy_price.toLocaleString('id-ID') : '—'}</td>
+      <td class="text-end text-nowrap mono">${h.current_price != null ? h.current_price.toLocaleString('id-ID') : '<span class="text-muted small">N/A</span>'}</td>
+      <td class="text-end text-nowrap mono">${fmtRp(h.invested)}</td>
+      <td class="text-end text-nowrap mono">${h.current_value != null ? fmtRp(h.current_value) : '<span class="text-muted">N/A</span>'}</td>
+      <td class="text-end mono fw-bold" style="${pnlStyle}">${h.unrealized_pnl != null ? pnlSign + fmtRp(h.unrealized_pnl) : '—'}</td>
+      <td class="text-end text-nowrap fw-bold" style="${pnlStyle}">${fmtPct(h.pnl_pct)}</td>
+      <td class="text-center text-nowrap text-muted small">${h.holding_days || 0} hari</td>
+      <td class="text-center text-nowrap">${swScore}</td>
+      <td class="text-center text-nowrap" id="ai-action-${h.symbol_short || h.symbol}">${actionBadge(h.ai_action)}</td>
+      <td class="text-center text-nowrap pe-3">
+        <div class="d-inline-flex gap-1 align-items-center">
+          <a href="/portfolio/${h.id}" class="btn btn-outline-secondary btn-sm py-1 px-2" title="Lihat Detail">
+            <i class="bi bi-eye"></i>
+          </a>
+          <button class="btn btn-outline-warning btn-sm py-1 px-2" onclick="openEditModal(${h.id})" title="Edit Posisi">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn btn-outline-danger btn-sm py-1 px-2" onclick="openDeleteModal(${h.id})" title="Hapus Posisi">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrapper.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle" style="font-size:0.83rem;">
+        <thead style="background:var(--bg-card);">
+          <tr>
+            <th class="ps-3 text-nowrap">Symbol</th>
+            <th class="text-center text-nowrap">Lot</th>
+            <th class="text-end text-nowrap">Avg Buy</th>
+            <th class="text-end text-nowrap">Harga Kini</th>
+            <th class="text-end text-nowrap">Investasi</th>
+            <th class="text-end text-nowrap">Nilai Sekarang</th>
+            <th class="text-end text-nowrap">P/L (Rp)</th>
+            <th class="text-end text-nowrap">P/L %</th>
+            <th class="text-center text-nowrap">Durasi</th>
+            <th class="text-center text-nowrap">Swing</th>
+            <th class="text-center text-nowrap">AI Action</th>
+            <th class="text-center text-nowrap pe-3">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── Render Charts ──────────────────────────────────────────
+function renderCharts(holdings) {
+  const allocEmpty = document.getElementById('alloc-empty');
+  const pnlEmpty   = document.getElementById('pnl-chart-empty');
+  const allocCanvas = document.getElementById('allocChart');
+  const pnlCanvas   = document.getElementById('pnlChart');
+
+  if (!holdings || holdings.length === 0) {
+    if (allocEmpty) allocEmpty.style.display = '';
+    if (pnlEmpty) pnlEmpty.style.display = '';
+    if (allocCanvas) allocCanvas.style.display = 'none';
+    if (pnlCanvas) pnlCanvas.style.display = 'none';
+    return;
+  }
+
+  if (allocEmpty) allocEmpty.style.display = 'none';
+  if (pnlEmpty) pnlEmpty.style.display = 'none';
+  if (allocCanvas) allocCanvas.style.display = '';
+  if (pnlCanvas) pnlCanvas.style.display = '';
+
+  const labels   = holdings.map(h => h.symbol_short || h.symbol);
+  const invested = holdings.map(h => h.invested || 0);
+  const pnls     = holdings.map(h => h.unrealized_pnl || 0);
+  const colors   = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#84cc16','#f97316','#ec4899','#14b8a6'];
+
+  // Doughnut Chart
+  if (allocChart) allocChart.destroy();
+  allocChart = new Chart(allocCanvas, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: invested,
+        backgroundColor: colors.slice(0, labels.length),
+        borderWidth: 2,
+        borderColor: '#151b26'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { color: '#94a3b8', font: { size: 11 }, padding: 12 }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              const val = ctx.raw || 0;
+              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+              return ` Rp ${val.toLocaleString('id-ID')} (${pct}%)`;
+            }
+          }
+        }
+      },
+      cutout: '62%',
+    }
+  });
+
+  // Bar Chart P/L
+  if (pnlChart) pnlChart.destroy();
+  pnlChart = new Chart(pnlCanvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Unrealized P/L (Rp)',
+        data: pnls,
+        backgroundColor: pnls.map(v => v >= 0 ? '#10b98188' : '#ef444488'),
+        borderColor:     pnls.map(v => v >= 0 ? '#10b981' : '#ef4444'),
+        borderWidth: 1,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              const val = ctx.raw || 0;
+              const sign = val >= 0 ? '+' : '';
+              return ` P/L: ${sign}Rp ${val.toLocaleString('id-ID')}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e2a3d' } },
+        y: {
+          ticks: {
+            color: '#94a3b8',
+            callback: function(v) {
+              if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+              if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(0) + 'K';
+              return v;
+            }
+          },
+          grid: { color: '#1e2a3d' }
+        }
+      }
+    }
+  });
+}
+
+// ── Add Position Logic ─────────────────────────────────────
+document.getElementById('f-lots')?.addEventListener('input', updatePreview);
+document.getElementById('f-avg-buy')?.addEventListener('input', updatePreview);
+
+function updatePreview() {
+  const lots = parseInt(document.getElementById('f-lots')?.value || 0);
+  const buy  = parseFloat(document.getElementById('f-avg-buy')?.value || 0);
+  const prev = document.getElementById('calc-preview');
+  if (lots > 0 && buy > 0) {
+    const shares  = lots * 100;
+    const invested = shares * buy;
+    document.getElementById('prev-shares').textContent  = shares.toLocaleString('id-ID');
+    document.getElementById('prev-invested').textContent = fmtRp(invested);
+    document.getElementById('f-shares-hint').textContent = `= ${shares.toLocaleString('id-ID')} lembar saham`;
+    prev.style.display = '';
+  } else {
+    prev.style.display = 'none';
+  }
+}
+
+// Set default buy date to today
+const todayStr = new Date().toISOString().split('T')[0];
+if (document.getElementById('f-buy-date')) document.getElementById('f-buy-date').value = todayStr;
+
+async function submitAddPosition() {
+  const errEl = document.getElementById('add-form-error');
+  errEl.style.display = 'none';
+  const btn = document.getElementById('btn-add-submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menyimpan...';
+
+  const sym = document.getElementById('f-symbol')?.value.trim().toUpperCase();
+  const lots = document.getElementById('f-lots')?.value;
+  const avgBuy = document.getElementById('f-avg-buy')?.value;
+  const buyDate = document.getElementById('f-buy-date')?.value;
+  const target = document.getElementById('f-target')?.value;
+  const sl = document.getElementById('f-sl')?.value;
+  const notes = document.getElementById('f-notes')?.value;
+
+  const payload = {
+    symbol: sym, quantity_lots: lots, avg_buy_price: avgBuy, buy_date: buyDate,
+    ...(target ? { target_price: target } : {}),
+    ...(sl ? { stop_loss_price: sl } : {}),
+    ...(notes ? { notes } : {}),
+  };
+
+  try {
+    const res = await fetch('/api/portfolio', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('addPositionModal'))?.hide();
+      // Reset form
+      document.getElementById('f-symbol').value = '';
+      document.getElementById('f-lots').value = '';
+      document.getElementById('f-avg-buy').value = '';
+      document.getElementById('f-target').value = '';
+      document.getElementById('f-sl').value = '';
+      document.getElementById('f-notes').value = '';
+      document.getElementById('calc-preview').style.display = 'none';
+      await loadPortfolio();
+    } else {
+      errEl.textContent = data.error || 'Gagal menyimpan posisi.';
+      errEl.style.display = '';
+    }
+  } catch(e) {
+    errEl.textContent = 'Error: ' + e;
+    errEl.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Simpan Posisi';
+  }
+}
+
+// ── Edit Position Logic ────────────────────────────────────
+function openEditModal(id) {
+  const h = window.holdingsCache[id];
+  if (!h) return;
+  document.getElementById('edit-id').value    = h.id;
+  document.getElementById('edit-symbol-title').textContent = (h.symbol_short || h.symbol);
+  document.getElementById('e-lots').value     = h.quantity_lots;
+  document.getElementById('e-avg-buy').value  = h.avg_buy_price;
+  document.getElementById('e-buy-date').value = h.buy_date;
+  document.getElementById('e-target').value   = h.target_price || '';
+  document.getElementById('e-sl').value       = h.stop_loss_price || '';
+  document.getElementById('e-company').value  = h.company_name || '';
+  document.getElementById('e-notes').value    = h.notes || '';
+  document.getElementById('edit-form-error').style.display = 'none';
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+async function submitEdit() {
+  const id = document.getElementById('edit-id').value;
+  const btn = document.getElementById('btn-edit-submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menyimpan...';
+
+  const payload = {
+    quantity_lots: document.getElementById('e-lots').value,
+    avg_buy_price: document.getElementById('e-avg-buy').value,
+    buy_date: document.getElementById('e-buy-date').value,
+    target_price: document.getElementById('e-target').value || '',
+    stop_loss_price: document.getElementById('e-sl').value || '',
+    company_name: document.getElementById('e-company').value,
+    notes: document.getElementById('e-notes').value,
+  };
+  try {
+    const res = await fetch(`/api/portfolio/${id}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('editModal'))?.hide();
+      await loadPortfolio();
+    } else {
+      const d = await res.json();
+      document.getElementById('edit-form-error').textContent = d.error || 'Gagal update.';
+      document.getElementById('edit-form-error').style.display = '';
+    }
+  } catch(e) {
+    alert('Error: ' + e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Simpan Perubahan';
+  }
+}
+
+// ── Delete Position Logic ──────────────────────────────────
+function openDeleteModal(id) {
+  const h = window.holdingsCache[id];
+  if (!h) return;
+  document.getElementById('del-holding-id').value = id;
+  document.getElementById('del-symbol-text').textContent = (h.symbol_short || h.symbol) + ' (' + h.quantity_lots + ' lot)';
+  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+async function executeDelete() {
+  const id = document.getElementById('del-holding-id').value;
+  if (!id) return;
+  const btn = document.getElementById('btn-confirm-delete');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menghapus...';
+
+  try {
+    const res = await fetch(`/api/portfolio/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (res.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('deleteModal'))?.hide();
+      await loadPortfolio();
+    } else {
+      alert('Gagal menghapus: ' + (data.error || 'Terjadi kesalahan'));
+    }
+  } catch(e) {
+    alert('Error menghapus: ' + e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-trash me-1"></i>Ya, Hapus';
+  }
+}
+
+// ── Refresh ────────────────────────────────────────────────
+function refreshPortfolio() { loadPortfolio(); }
+
+// ── AI Portfolio Analysis ──────────────────────────────────
+async function runPortfolioAI() {
+  const btn = document.getElementById('btn-portfolio-ai');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menganalisis...';
+
+  try {
+    const res  = await fetch('/api/portfolio/ai-analysis', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert('AI Analysis error: ' + (data.message || data.error || 'Server error'));
+      return;
+    }
+    renderAIHealth(data);
+  } catch(e) {
+    alert('AI Portfolio error: ' + e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-robot me-1"></i>AI Portfolio Analysis';
+  }
+}
+
+function renderAIHealth(data) {
+  const card = document.getElementById('ai-health-card');
+  card.style.display = '';
+
+  const healthColors = {
+    'EXCELLENT': 'text-success', 'GOOD': 'text-info',
+    'FAIR': 'text-warning', 'RISKY': 'text-danger', 'HIGH_RISK': 'text-danger fw-bold',
+    'INSUFFICIENT_DATA': 'text-muted'
+  };
+
+  document.getElementById('ai-score').textContent        = data.portfolio_score ?? '—';
+  document.getElementById('ai-model-badge').textContent  = data.model_used || 'AI';
+  document.getElementById('ai-health-summary').textContent = data.summary || '';
+  document.getElementById('ai-concentration').textContent = data.concentration_risk ? '⚠ ' + data.concentration_risk : '';
+
+  const badgeEl = document.getElementById('ai-health-badge');
+  badgeEl.textContent  = data.health_status || '—';
+  badgeEl.className    = 'fs-5 fw-bold mb-1 ' + (healthColors[data.health_status] || 'text-muted');
+
+  // Risks
+  const risksEl = document.getElementById('ai-risks');
+  risksEl.innerHTML = (data.key_risks || []).map(r => `<li class="mb-1">${r}</li>`).join('') || '<li class="text-muted">Tidak ada risiko signifikan.</li>';
+
+  // Suggestions
+  const sugEl = document.getElementById('ai-suggestions');
+  sugEl.innerHTML = (data.suggestions || []).map(s => `<li class="mb-1">${s}</li>`).join('') || '<li class="text-muted">Tidak ada saran khusus.</li>';
+
+  // Per-stock AI actions
+  for (const action of (data.actions || [])) {
+    const el = document.getElementById('ai-action-' + action.symbol);
+    if (!el) continue;
+    el.innerHTML = actionBadge(action.action);
+    el.title = action.brief || '';
+  }
+
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Init ──────────────────────────────────────────────────
+loadPortfolio();
+</script>
+{% endblock %}

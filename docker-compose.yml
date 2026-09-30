@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    container_name: asykar_daytrade
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - TZ=Asia/Jakarta
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs

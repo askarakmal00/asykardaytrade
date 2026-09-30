@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+jinja2
+sqlalchemy
+pandas
+numpy
+yfinance
+ta
+python-dotenv
+httpx
+pytz
