@@ -59,6 +59,12 @@ scan_status = {
     "last_update": "System ready. Click Update Market Data or Run Screener."
 }
 
+scan_progress = {
+    "current": 0,
+    "total": 0,
+    "phase": "idle",   # idle | downloading | scanning
+}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -349,27 +355,43 @@ def debug_market_data(symbol: str, request: Request):
 @app.post("/api/update-data")
 def update_data_endpoint(background_tasks: BackgroundTasks):
     def task():
-        global scan_status, latest_scan_data
+        global scan_status, latest_scan_data, scan_progress
         scan_status["status"] = "downloading"
         scan_status["last_update"] = "Starting fast batch download from Yahoo Finance..."
+        scan_progress["phase"] = "downloading"
+        scan_progress["current"] = 0
+        scan_progress["total"] = 0
         try:
             def progress(processed, total, info, step):
                 scan_status["last_update"] = f"Downloading [{processed}/{total}] ({info})..."
+                scan_progress["current"] = processed
+                scan_progress["total"] = total
+                scan_progress["phase"] = "downloading"
 
             db_bg = next(get_db())
             res = market_data.update_market_data(db_bg, progress_callback=progress)
-            
+
             # Automatically run scanner after fresh data download
             scan_status["status"] = "scanning"
             scan_status["last_update"] = "Data updated. Computing technical indicators and strategy setups..."
-            latest_scan_data = scanner_service.run_scanner(db_bg)
-            
+            scan_progress["phase"] = "scanning"
+            scan_progress["current"] = 0
+            scan_progress["total"] = 0
+
+            def scan_progress_cb(current, total):
+                scan_progress["current"] = current
+                scan_progress["total"] = total
+
+            latest_scan_data = scanner_service.run_scanner(db_bg, progress_callback=scan_progress_cb)
+
             db_bg.close()
             scan_status["status"] = "idle"
             scan_status["last_update"] = f"Update complete. Found {latest_scan_data['ready_count']} Ready to Action signals ({latest_scan_data['a_plus_count']} A+, {latest_scan_data['a_count']} A) from {latest_scan_data['scanned_count']} stocks."
+            scan_progress["phase"] = "idle"
         except Exception as e:
             scan_status["status"] = "error"
             scan_status["last_update"] = f"Error during update: {e}"
+            scan_progress["phase"] = "idle"
 
     background_tasks.add_task(task)
     return {"message": "Market data update initiated in background"}
@@ -377,18 +399,28 @@ def update_data_endpoint(background_tasks: BackgroundTasks):
 @app.post("/api/run-scanner")
 def run_scanner_endpoint(background_tasks: BackgroundTasks):
     def task():
-        global scan_status, latest_scan_data
+        global scan_status, latest_scan_data, scan_progress
         scan_status["status"] = "scanning"
         scan_status["last_update"] = "Evaluating trend, momentum, setups, and trade parameters..."
+        scan_progress["phase"] = "scanning"
+        scan_progress["current"] = 0
+        scan_progress["total"] = 0
         try:
             db_bg = next(get_db())
-            latest_scan_data = scanner_service.run_scanner(db_bg)
+
+            def scan_progress_cb(current, total):
+                scan_progress["current"] = current
+                scan_progress["total"] = total
+
+            latest_scan_data = scanner_service.run_scanner(db_bg, progress_callback=scan_progress_cb)
             db_bg.close()
             scan_status["status"] = "idle"
             scan_status["last_update"] = f"Scan complete. Found {latest_scan_data['ready_count']} Ready to Action signals ({latest_scan_data['a_plus_count']} A+, {latest_scan_data['a_count']} A) from {latest_scan_data['scanned_count']} stocks."
+            scan_progress["phase"] = "idle"
         except Exception as e:
             scan_status["status"] = "error"
             scan_status["last_update"] = f"Error during scanner execution: {e}"
+            scan_progress["phase"] = "idle"
 
     background_tasks.add_task(task)
     return {"message": "Scanner started in background"}
@@ -396,6 +428,10 @@ def run_scanner_endpoint(background_tasks: BackgroundTasks):
 @app.get("/api/status")
 def get_status():
     return scan_status
+
+@app.get("/api/scan-progress")
+def get_scan_progress():
+    return scan_progress
 
 @app.get("/api/stock-data/{symbol}")
 def get_stock_data(symbol: str, db: Session = Depends(get_db)):

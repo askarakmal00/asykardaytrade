@@ -145,7 +145,7 @@ def process_symbol_detail(db: Session, ticker: str) -> Optional[Dict[str, Any]]:
     return result
 
 
-def run_scanner(db: Session) -> Dict[str, Any]:
+def run_scanner(db: Session, progress_callback=None) -> Dict[str, Any]:
     """
     Runs screener & ranking across all active symbols, saves scan run and signals.
 
@@ -155,13 +155,16 @@ def run_scanner(db: Session) -> Dict[str, Any]:
     """
     scan_run = repositories.create_scan_run(db)
     symbols = repositories.get_active_symbols(db)
+    total_symbols = len(symbols)
 
     all_results = []
     passed_results = []
     error_count = 0
     scan_time = scan_run.started_at or datetime.datetime.now(datetime.timezone.utc)
 
-    for sym in symbols:
+    for idx, sym in enumerate(symbols, start=1):
+        if progress_callback:
+            progress_callback(idx, total_symbols)
         try:
             df = load_symbol_dataframe(db, sym.id)
             if df.empty:
