@@ -5,6 +5,7 @@ ENV TZ=Asia/Jakarta
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     curl \
+    git \
     libpq5 \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
