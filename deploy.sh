@@ -2,6 +2,7 @@
 set -e
 
 echo "🚀 [1/3] Pulling latest changes from Git..."
+git config --global --add safe.directory "$PWD" 2>/dev/null || true
 git pull origin main
 
 if [ -f "docker-compose.yml" ] && command -v docker &> /dev/null; then

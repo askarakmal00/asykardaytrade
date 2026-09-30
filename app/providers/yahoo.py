@@ -166,6 +166,23 @@ class YahooFinanceProvider(MarketDataProvider):
             result["volume"] = getattr(fi, "last_volume", None)
 
         except Exception as e:
-            logger.error(f"Error fetching quote for {symbol}: {e}")
+            logger.debug(f"fast_info error for {symbol}: {e}")
+
+        # Fallback to direct Yahoo chart API meta if fast_info failed (crumb 429 on VPS)
+        if not result["current_price"]:
+            try:
+                import requests
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1d"
+                r = requests.get(url, headers=headers, timeout=5)
+                if r.status_code == 200:
+                    meta = r.json().get("chart", {}).get("result", [{}])[0].get("meta", {})
+                    result["current_price"] = meta.get("regularMarketPrice")
+                    result["previous_close"] = meta.get("chartPreviousClose")
+                    result["day_high"] = meta.get("regularMarketDayHigh")
+                    result["day_low"] = meta.get("regularMarketDayLow")
+                    result["volume"] = meta.get("regularMarketVolume")
+            except Exception as e2:
+                logger.debug(f"Direct quote fallback error for {symbol}: {e2}")
 
         return result
