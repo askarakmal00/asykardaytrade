@@ -10,7 +10,11 @@ engine_kwargs = {"pool_pre_ping": True}
 if not is_sqlite:
     engine_kwargs.update({"pool_size": 5, "max_overflow": 10})
 
-engine = create_engine(config.DATABASE_URL, connect_args=connect_args, **engine_kwargs)
+db_url = config.DATABASE_URL
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+engine = create_engine(db_url, connect_args=connect_args, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
