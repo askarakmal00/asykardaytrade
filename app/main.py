@@ -416,6 +416,10 @@ def debug_market_data(symbol: str, request: Request):
 
 @app.post("/api/update-data")
 def update_data_endpoint(background_tasks: BackgroundTasks):
+    global scan_progress
+    if scan_progress["phase"] != "idle":
+        return {"message": "Proses update sedang berjalan di background", "status": "already_running"}
+
     def task():
         global scan_status, latest_scan_data, scan_progress
         scan_status["status"] = "downloading"
@@ -464,6 +468,10 @@ def update_data_endpoint(background_tasks: BackgroundTasks):
 
 @app.post("/api/run-scanner")
 def run_scanner_endpoint(background_tasks: BackgroundTasks):
+    global scan_progress
+    if scan_progress["phase"] != "idle":
+        return {"message": "Proses scan sedang berjalan di background", "status": "already_running"}
+
     def task():
         global scan_status, latest_scan_data, scan_progress
         scan_status["status"] = "scanning"
